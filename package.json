@@ -1,0 +1,36 @@
+{
+  "name": "saki",
+  "productName": "Saki",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "concurrently -k \"tsc -w\" \"vite\" \"wait-on dist/main/index.js http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview --strictPort",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.5.0",
+    "drizzle-orm": "^0.45.1",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.0.3",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "drizzle-kit": "^0.31.8",
+    "electron": "^29.0.0",
+    "electron-rebuild": "^3.2.9",
+    "happy-dom": "^20.0.11",
+    "typescript": "^5.9.3",
+    "vite": "^5.0.0",
+    "vitest": "^4.0.16",
+    "wait-on": "^7.0.1"
+  }
+}
