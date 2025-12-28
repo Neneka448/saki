@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import MarkdownEditor from './MarkdownEditor.vue'
+import { CodeMirrorEditor } from '../../editor'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import type { CardDetail, CardListItem, TagWithMeta } from '../../../../shared/ipc/types'
 import { getTagDisplayInfo, sortTagsByName } from '../../utils/tagUtils'
@@ -121,23 +121,51 @@ const resolveDisplayText = (card: CardDetail | null, placeholder: string) => {
   return card.content.split('\n').find((line) => line.trim())?.slice(0, 60) || '未命名卡片'
 }
 
-const loadReferenceMap = async () => {
-  const map: Record<string, { cardId: number; title: string | null; content: string; displayText: string }> = {}
-  for (const tag of referenceTags.value) {
+interface RefTagInfo {
+  refId: string
+  targetCardId: number
+  placeholder: string
+}
+
+const extractRefTagInfos = (tags: TagWithMeta[]): RefTagInfo[] => {
+  const result: RefTagInfo[] = []
+  for (const tag of tags) {
     const extra = tag.extra as Record<string, unknown> | null
     if (!extra || extra.type !== REFERENCE_META_TYPE) continue
     const refId = typeof extra.refId === 'string' ? extra.refId : ''
     const targetCardId = typeof extra.targetCardId === 'number' ? extra.targetCardId : null
     const placeholder = typeof extra.placeholder === 'string' ? extra.placeholder : ''
-    if (!refId || !targetCardId) continue
-    const detailResult = await window.card.getById(targetCardId)
+    if (refId && targetCardId) {
+      result.push({ refId, targetCardId, placeholder })
+    }
+  }
+  return result
+}
+
+const loadReferenceMap = async () => {
+  const infos = extractRefTagInfos(referenceTags.value)
+  if (infos.length === 0) {
+    referenceMap.value = {}
+    return
+  }
+
+  // 并行获取所有目标卡片
+  const results = await Promise.all(
+    infos.map(async (info) => {
+      const detailResult = await window.card.getById(info.targetCardId)
+      return { info, detailResult }
+    })
+  )
+
+  const map: Record<string, { cardId: number; title: string | null; content: string; displayText: string }> = {}
+  for (const { info, detailResult } of results) {
     if (!detailResult.success) continue
     const cardDetail = detailResult.data
-    map[refId] = {
+    map[info.refId] = {
       cardId: cardDetail.id,
       title: cardDetail.title,
       content: cardDetail.content || cardDetail.summary || '',
-      displayText: resolveDisplayText(cardDetail, placeholder),
+      displayText: resolveDisplayText(cardDetail, info.placeholder),
     }
   }
   referenceMap.value = map
@@ -472,7 +500,7 @@ onBeforeUnmount(() => {
     <!-- 内容区 -->
     <div v-else class="card-edit-view__content">
       <!-- 编辑模式 -->
-      <MarkdownEditor
+      <CodeMirrorEditor
         v-if="isEditing"
         v-model="content"
         :auto-focus="true"

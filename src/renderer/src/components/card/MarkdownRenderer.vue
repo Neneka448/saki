@@ -22,7 +22,7 @@ const activeReference = computed(() => {
 
 const tooltipStyle = computed(() => {
   if (!hoveredRect.value) return undefined
-  const width = Math.min(420, hoveredRect.value.width)
+  const width = Math.min(420, Math.max(240, hoveredRect.value.width))
   return {
     top: `${hoveredRect.value.bottom + 8}px`,
     left: `${hoveredRect.value.left}px`,
@@ -37,11 +37,36 @@ const renderMarkdown = (
 ) => {
   let html = raw
 
-  // 转义 HTML
+  // 卡片引用 [[title]](placeholder)<!--ref:RID-->
+  // 必须在 HTML 转义之前处理，因为 <!-- --> 会被转义
+  html = html.replace(/\[\[([^\]]+)\]\]\(([^)]*)\)<!--ref:([a-zA-Z0-9_-]+)-->/g, (_, title, placeholder, refId) => {
+    const map = referenceMap || {}
+    const ref = map[refId]
+    if (!ref) {
+      // 无法解析时显示为普通文本
+      const display = String(placeholder || '').trim() || title
+      return `<span class="md-card-ref md-card-ref--unresolved">${display}</span>`
+    }
+    const display = String(placeholder || '').trim() || ref.displayText
+    return `<span class="md-card-ref" data-ref-id="${refId}" data-card-id="${ref.cardId}">${display}</span>`
+  })
+
+  // 转义 HTML（在引用处理之后）
+  // 只转义尚未处理的部分，避免破坏已生成的 HTML 标签
+  // 使用临时占位符保护已生成的标签
+  const placeholders: string[] = []
+  html = html.replace(/<span class="md-card-ref[^>]*>.*?<\/span>/g, (match) => {
+    placeholders.push(match)
+    return `\x00REF${placeholders.length - 1}\x00`
+  })
+
   html = html
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+
+  // 恢复引用标签
+  html = html.replace(/\x00REF(\d+)\x00/g, (_, index) => placeholders[parseInt(index)])
 
   // 代码块 (```code```)
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
@@ -50,17 +75,6 @@ const renderMarkdown = (
 
   // 行内代码 (`code`)
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-
-  // 卡片引用 [[title]](placeholder)<!--ref:RID-->
-  html = html.replace(/\[\[([^\]]+)\]\]\(([^)]*)\)<!--ref:([a-zA-Z0-9_-]+)-->/g, (_, title, placeholder, refId) => {
-    const map = referenceMap || {}
-    const ref = map[refId]
-    if (!ref) {
-      return `[[${title}]](${placeholder})`
-    }
-    const display = String(placeholder || '').trim() || ref.displayText
-    return `<span class="md-card-ref" data-ref-id="${refId}" data-card-id="${ref.cardId}">${display}</span>`
-  })
 
   // 图片 ![alt](url) - asset:// 协议由主进程处理
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {

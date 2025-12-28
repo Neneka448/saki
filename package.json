@@ -13,7 +13,15 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.1",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.1",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/state": "^6.5.3",
+    "@codemirror/view": "^6.39.7",
+    "@lezer/highlight": "^1.2.3",
     "better-sqlite3": "^12.5.0",
+    "codemirror": "^6.0.2",
     "drizzle-orm": "^0.45.1",
     "vue": "^3.4.0"
   },

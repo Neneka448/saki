@@ -10,5 +10,6 @@ export default defineConfig({
             'src/renderer/src/**/__tests__/**/*.test.ts',
         ],
         environment: 'happy-dom',
+        setupFiles: ['./src/test/setup.ts'],
     },
 })

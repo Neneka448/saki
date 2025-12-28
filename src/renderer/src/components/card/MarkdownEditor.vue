@@ -3,6 +3,9 @@ import { ref, watch, nextTick, computed, onMounted, onBeforeUnmount } from 'vue'
 import type { CardListItem } from '../../../../shared/ipc/types'
 import { createReferenceId } from '../../utils/referenceUtils'
 
+// 隐藏 ref 注释的正则
+const REF_COMMENT_PATTERN = /<!--ref:[a-zA-Z0-9_-]+-->/g
+
 const props = defineProps<{
   modelValue: string
   placeholder?: string
@@ -17,6 +20,7 @@ const emit = defineEmits<{
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const backdropRef = ref<HTMLDivElement | null>(null)
 const isUploading = ref(false)
 const showReferenceList = ref(false)
 const referenceQuery = ref('')
@@ -24,6 +28,15 @@ const referenceStart = ref(0)
 const referenceActiveIndex = ref(0)
 const referenceDropdownStyle = ref<Record<string, string>>({})
 const referenceDropdownRef = ref<HTMLElement | null>(null)
+
+// 显示内容：隐藏 ref 注释
+const displayContent = computed(() => {
+  // 将 ref 注释替换为不可见的占位（保持光标位置正确）
+  return props.modelValue.replace(REF_COMMENT_PATTERN, (match) => {
+    // 用相同长度的不可见字符替换，保持对齐
+    return '\u200B'.repeat(match.length)
+  })
+})
 
 const filteredReferences = computed(() => {
   const items = props.referenceCandidates || []
@@ -41,9 +54,23 @@ const filteredReferences = computed(() => {
 // 自动调整高度
 const adjustHeight = () => {
   const textarea = textareaRef.value
+  const backdrop = backdropRef.value
   if (textarea) {
     textarea.style.height = 'auto'
     textarea.style.height = `${textarea.scrollHeight}px`
+  }
+  if (backdrop && textarea) {
+    backdrop.style.height = `${textarea.scrollHeight}px`
+  }
+}
+
+// 同步滚动
+const syncScroll = () => {
+  const textarea = textareaRef.value
+  const backdrop = backdropRef.value
+  if (textarea && backdrop) {
+    backdrop.scrollTop = textarea.scrollTop
+    backdrop.scrollLeft = textarea.scrollLeft
   }
 }
 
@@ -313,6 +340,14 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="markdown-editor">
+    <!-- 背景显示层：隐藏 ref 注释 -->
+    <div
+      ref="backdropRef"
+      class="markdown-editor__backdrop"
+      aria-hidden="true"
+    >{{ displayContent }}<br /></div>
+    
+    <!-- 透明输入层 -->
     <textarea
       ref="textareaRef"
       :value="modelValue"
@@ -321,6 +356,7 @@ onBeforeUnmount(() => {
       @input="handleInput"
       @paste="handlePaste"
       @keydown="handleKeydown"
+      @scroll="syncScroll"
     />
 
     <Teleport to="body">
@@ -361,20 +397,47 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-.markdown-editor__textarea {
+/* 背景显示层：显示处理后的内容（隐藏 ref 注释） */
+.markdown-editor__backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   width: 100%;
   min-height: 200px;
   padding: 16px;
-  border: 1px solid var(--color-border);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--color-bg-panel);
   color: var(--color-text);
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: hidden;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+/* 透明输入层：接收用户输入 */
+.markdown-editor__textarea {
+  position: relative;
+  width: 100%;
+  min-height: 200px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: transparent;
+  caret-color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
   resize: none;
   outline: none;
   transition: border-color 0.15s;
+  box-sizing: border-box;
 }
 
 .markdown-editor__textarea:focus {

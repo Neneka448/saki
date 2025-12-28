@@ -15,28 +15,37 @@ export interface ReferenceParseResult {
 }
 
 const REF_COMMENT_PATTERN = /<!--ref:([a-zA-Z0-9_-]+)-->/g
-const REF_REGEX = /\[\[([^\]]+)\]\]\(([^)]*)\)(?:<!--ref:([a-zA-Z0-9_-]+)-->){0,1}/g
+const REF_REGEX = /\[\[([^\]]+)\]\]\(([^)]*)\)(?:<!--ref:([a-zA-Z0-9_-]+)-->)?/g
 
-export const createReferenceId = () => {
+/**
+ * 生成唯一的引用 ID
+ */
+export const createReferenceId = (): string => {
     const now = Date.now().toString(36)
     const rand = Math.random().toString(36).slice(2, 8)
     return `${now}${rand}`
 }
 
-export const assertReferenceInvariant = (content: string) => {
-    const normalized = normalizeCardReferences(content, { allowInsert: false })
-    if (normalized.errors.length > 0) {
-        throw new Error(normalized.errors[0])
-    }
+/**
+ * 校验内容中的引用结构是否完整（所有引用必须有 refId）
+ * @throws 如果引用结构不完整则抛出错误
+ */
+export const assertReferenceInvariant = (content: string): void => {
+    normalizeCardReferences(content, { allowInsert: false })
 }
 
+/**
+ * 解析并规范化内容中的卡片引用
+ * - 为缺少 refId 的引用自动生成 ID（当 allowInsert=true）
+ * - 检测孤立的 ref 注释
+ * @throws 如果存在孤立的 ref 注释，或 allowInsert=false 时存在缺少 refId 的引用
+ */
 export const normalizeCardReferences = (
     content: string,
     options: { allowInsert?: boolean } = {}
-): ReferenceParseResult & { errors: string[] } => {
+): ReferenceParseResult => {
     const allowInsert = options.allowInsert !== false
     const references: CardReferenceToken[] = []
-    const errors: string[] = []
 
     const replaced = content.replace(REF_REGEX, (match, title, placeholder, refId, offset) => {
         const cleanTitle = String(title || '').trim()
@@ -45,8 +54,7 @@ export const normalizeCardReferences = (
 
         if (!resolvedRefId) {
             if (!allowInsert) {
-                errors.push('Reference missing ref id comment')
-                return match
+                throw new Error('Reference missing ref id comment')
             }
             resolvedRefId = createReferenceId()
         }
@@ -62,18 +70,11 @@ export const normalizeCardReferences = (
         return raw
     })
 
-    const leftovers = replaced.match(REF_COMMENT_PATTERN)
-    if (leftovers && leftovers.length > references.length) {
-        errors.push('Orphan ref comment detected')
+    // 检测孤立的 ref 注释（不属于任何引用的注释）
+    const allRefComments = replaced.match(REF_COMMENT_PATTERN)
+    if (allRefComments && allRefComments.length > references.length) {
+        throw new Error('Orphan ref comment detected')
     }
 
-    if (errors.length > 0) {
-        throw new Error(errors[0])
-    }
-
-    return {
-        content: replaced,
-        references,
-        errors,
-    }
+    return { content: replaced, references }
 }

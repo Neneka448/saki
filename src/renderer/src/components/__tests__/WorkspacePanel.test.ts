@@ -2,6 +2,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import WorkspacePanel from '../WorkspacePanel.vue'
 
+// Mock CodeMirrorEditor 组件，避免 CodeMirror 在测试中运行
+vi.mock('../../editor', () => ({
+    CodeMirrorEditor: {
+        name: 'CodeMirrorEditor',
+        template: '<div class="mock-editor"><slot /></div>',
+        props: ['modelValue', 'placeholder', 'autoFocus', 'referenceCandidates', 'currentCardId'],
+        emits: ['update:modelValue', 'save'],
+    },
+}))
+
 // Mock window.card API
 const mockCardApi = {
     getListByProject: vi.fn(),
