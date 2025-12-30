@@ -23,10 +23,13 @@
     "better-sqlite3": "^12.5.0",
     "codemirror": "^6.0.2",
     "drizzle-orm": "^0.45.1",
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.0",
     "vue": "^3.4.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/markdown-it": "^14",
     "@types/node": "^25.0.3",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vue/test-utils": "^2.4.6",

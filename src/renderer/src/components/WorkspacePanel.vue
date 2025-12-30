@@ -23,11 +23,11 @@ const showTagCreator = ref(false)
 const isTagSaving = ref(false)
 const newTagName = ref('')
 const tagColorOptions = [
-  '#3b82f6',
+  '#3a6df6',
   '#10b981',
   '#f59e0b',
   '#ef4444',
-  '#8b5cf6',
+  '#0ea5e9',
   '#14b8a6',
   '#f97316',
   '#64748b',
@@ -608,7 +608,7 @@ watch(tagEditColor, () => {
               >
                 <span
                   class="tag-item__dot"
-                  :style="{ background: tag.color || '#9ca3af' }"
+                  :style="{ background: tag.color || 'var(--color-text-muted)' }"
                 ></span>
                 <span class="tag-item__name">{{ tag.name }}</span>
                 <span class="tag-item__count">{{ tag.usageCount }}</span>
@@ -723,25 +723,31 @@ watch(tagEditColor, () => {
   flex: 1;
   height: 100%;
   display: flex;
-  background: var(--color-bg);
+  background: transparent;
+  gap: 8px;
+  animation: panel-rise 0.35s ease both;
 }
 
 /* 左侧列表区 */
 .workspace-list {
-  width: 320px;
-  min-width: 280px;
+  width: 260px;
+  min-width: 220px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-panel);
-  border-right: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  backdrop-filter: blur(12px);
 }
 
 /* 右侧编辑区 */
 .workspace-editor {
   flex: 1;
   height: 100%;
-  padding: 16px;
+  padding: 8px;
   overflow: hidden;
 }
 
@@ -751,6 +757,9 @@ watch(tagEditColor, () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--color-border);
+  background: rgba(255, 255, 255, 0.6);
 }
 
 .workspace-placeholder__content {
@@ -773,8 +782,9 @@ watch(tagEditColor, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--color-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.7));
   -webkit-app-region: drag;
 }
 
@@ -790,17 +800,21 @@ watch(tagEditColor, () => {
   font-weight: 500;
   color: var(--color-text-secondary);
   border-radius: var(--radius-sm);
-  transition: all 0.15s;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
 }
 
 .workspace-header__tab:hover {
   color: var(--color-text);
-  background: var(--color-bg);
+  background: white;
 }
 
 .workspace-header__tab--active {
   color: var(--color-text);
-  background: var(--color-bg);
+  background: linear-gradient(135deg, rgba(58, 109, 246, 0.18), rgba(17, 183, 165, 0.12));
+  border-color: rgba(58, 109, 246, 0.45);
+  box-shadow: var(--shadow-sm);
 }
 
 .workspace-header__actions {
@@ -817,13 +831,15 @@ watch(tagEditColor, () => {
   font-size: 12px;
   font-weight: 500;
   color: white;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
   border-radius: var(--radius-sm);
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+  box-shadow: 0 10px 18px rgba(58, 109, 246, 0.2);
 }
 
 .workspace-header__btn:hover {
-  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(58, 109, 246, 0.28);
 }
 
 /* 内容区 */
@@ -889,13 +905,15 @@ watch(tagEditColor, () => {
   font-size: 13px;
   font-weight: 500;
   color: white;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
   border-radius: var(--radius-sm);
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+  box-shadow: 0 10px 18px rgba(58, 109, 246, 0.2);
 }
 
 .workspace-empty__btn:hover {
-  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(58, 109, 246, 0.28);
 }
 
 /* 卡片列表 */
@@ -908,20 +926,24 @@ watch(tagEditColor, () => {
 /* 卡片项 */
 .card-item {
   padding: 12px;
-  background: var(--color-bg);
-  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.15s;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
 }
 
 .card-item:hover {
-  border-color: var(--color-border);
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .card-item--selected {
-  border-color: var(--color-primary);
-  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(58, 109, 246, 0.45);
+  background: linear-gradient(135deg, rgba(58, 109, 246, 0.12), rgba(17, 183, 165, 0.1));
+  box-shadow: var(--shadow-glow);
 }
 
 .card-item__header {
@@ -1016,9 +1038,10 @@ watch(tagEditColor, () => {
   padding: 0 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-bg-panel);
+  background: var(--color-bg-elevated);
   color: var(--color-text);
   font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .tag-create__input:focus {
@@ -1032,17 +1055,21 @@ watch(tagEditColor, () => {
   border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--color-text-secondary);
-  background: var(--color-bg);
-  transition: all 0.15s;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
 }
 
 .tag-create__btn--primary {
   color: white;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  border-color: transparent;
+  box-shadow: 0 10px 18px rgba(58, 109, 246, 0.2);
 }
 
 .tag-create__btn--primary:hover:not(:disabled) {
-  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(58, 109, 246, 0.28);
 }
 
 .tag-create__btn:disabled {
@@ -1066,7 +1093,8 @@ watch(tagEditColor, () => {
   height: 18px;
   border-radius: 50%;
   border: 2px solid transparent;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
 }
 
 .tag-color--selected {
@@ -1090,19 +1118,23 @@ watch(tagEditColor, () => {
   gap: 8px;
   padding: 8px 10px;
   border-radius: var(--radius-md);
-  background: var(--color-bg);
-  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--color-border);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
 }
 
 .tag-item:hover {
-  border-color: var(--color-border);
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .tag-item--selected {
-  border-color: var(--color-primary);
-  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(58, 109, 246, 0.45);
+  background: linear-gradient(135deg, rgba(58, 109, 246, 0.12), rgba(17, 183, 165, 0.1));
+  box-shadow: var(--shadow-glow);
 }
 
 .tag-item__dot {
@@ -1139,8 +1171,9 @@ watch(tagEditColor, () => {
   min-height: 200px;
   padding: 16px;
   border-radius: var(--radius-lg);
-  background: var(--color-bg-panel);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1173,9 +1206,10 @@ watch(tagEditColor, () => {
   padding: 0 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  background: var(--color-bg-elevated);
   color: var(--color-text);
   font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .tag-editor__input:focus {
@@ -1216,9 +1250,15 @@ watch(tagEditColor, () => {
   padding: 6px 14px;
   font-size: 12px;
   border-radius: var(--radius-sm);
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
   color: white;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+  box-shadow: 0 10px 18px rgba(58, 109, 246, 0.2);
+}
+
+.tag-editor__save:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(58, 109, 246, 0.28);
 }
 
 .tag-editor__save:disabled {
@@ -1236,8 +1276,9 @@ watch(tagEditColor, () => {
   min-height: 0;
   padding: 16px;
   border-radius: var(--radius-lg);
-  background: var(--color-bg-panel);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1268,8 +1309,9 @@ watch(tagEditColor, () => {
   padding: 10px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
-  background: var(--color-bg);
+  background: var(--color-bg-elevated);
   cursor: default;
+  box-shadow: var(--shadow-sm);
 }
 
 .tag-card__title {
@@ -1294,10 +1336,11 @@ watch(tagEditColor, () => {
   position: fixed;
   padding: 12px;
   border-radius: var(--radius-md);
-  background: var(--color-bg-panel);
+  background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--color-border);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+  box-shadow: var(--shadow-md);
   z-index: 12;
+  backdrop-filter: blur(10px);
 }
 
 .tag-card__tooltip--portal {
@@ -1314,5 +1357,16 @@ watch(tagEditColor, () => {
 .tag-card__tooltip-content {
   max-height: 240px;
   overflow-y: auto;
+}
+
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

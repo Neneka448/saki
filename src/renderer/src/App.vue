@@ -8,12 +8,12 @@ import type { Project } from '../../shared/ipc/types'
 // 当前选中的项目
 const currentProject = ref<Project | null>(null)
 const isChatCollapsed = ref(false)
-const chatWidth = ref(400)
+const chatWidth = ref(320)
 const isResizing = ref(false)
-const resizeState = ref({ startX: 0, startWidth: 400 })
+const resizeState = ref({ startX: 0, startWidth: 320 })
 
 const applyChatWidth = (value: number) => {
-  const clamped = Math.min(560, Math.max(280, value))
+  const clamped = Math.min(420, Math.max(240, value))
   chatWidth.value = clamped
 }
 
@@ -102,10 +102,12 @@ onMounted(() => {
   display: flex;
   height: 100vh;
   width: 100vw;
+  padding: 12px;
 }
 
 .chat-resizer {
-  width: 6px;
+  width: 10px;
+  margin: 0 6px;
   cursor: col-resize;
   background: transparent;
   position: relative;
@@ -114,35 +116,50 @@ onMounted(() => {
 .chat-resizer::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 2px;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
   width: 2px;
-  background: var(--color-border);
-  opacity: 0.6;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, var(--color-border-strong), var(--color-border));
+  opacity: 0.45;
+  border-radius: 999px;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.chat-resizer:hover::before,
+.chat-resizer:active::before {
+  opacity: 0.9;
+  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
 }
 
 .chat-collapsed {
-  width: 44px;
-  background: var(--color-bg-panel);
-  border-right: 1px solid var(--color-border);
+  width: 52px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
 }
 
 .chat-collapsed__btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-collapsed__btn:hover {
-  background: var(--color-bg);
+  background: white;
   color: var(--color-text);
 }
 </style>

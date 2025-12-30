@@ -159,14 +159,15 @@ defineExpose({
   position: relative;
   width: 100%;
   min-height: 200px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-panel);
+  border: none;
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
+  box-shadow: none;
 }
 
 .cm-editor-container:focus-within {
-  border-color: var(--color-primary);
+  box-shadow: none;
 }
 
 .cm-editor-wrapper {
@@ -189,11 +190,12 @@ defineExpose({
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--color-bg);
+  background: rgba(255, 255, 255, 0.9);
   border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--color-text-secondary);
   box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
   z-index: 10;
 }
 

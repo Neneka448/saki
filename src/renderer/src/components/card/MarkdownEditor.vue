@@ -408,7 +408,7 @@ onBeforeUnmount(() => {
   padding: 16px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--color-bg-panel);
+  background: var(--color-bg-elevated);
   color: var(--color-text);
   font-family: var(--font-mono);
   font-size: 14px;
@@ -436,12 +436,13 @@ onBeforeUnmount(() => {
   line-height: 1.6;
   resize: none;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   box-sizing: border-box;
 }
 
 .markdown-editor__textarea:focus {
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(58, 109, 246, 0.12);
 }
 
 .markdown-editor__textarea::placeholder {
@@ -456,11 +457,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--color-bg);
+  background: rgba(255, 255, 255, 0.9);
   border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--color-text-secondary);
   box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
 }
 
 .markdown-editor__uploading-spinner {
@@ -480,15 +482,16 @@ onBeforeUnmount(() => {
   position: fixed;
   min-width: 220px;
   max-width: 320px;
-  background: var(--color-bg-panel);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
   padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   z-index: 999;
+  backdrop-filter: blur(10px);
 }
 
 .markdown-editor__reference-title {
@@ -503,11 +506,15 @@ onBeforeUnmount(() => {
   text-align: left;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+}
+
+.markdown-editor__reference-item:hover {
+  background: var(--color-bg-soft);
 }
 
 .markdown-editor__reference-item--active {
-  background: rgba(59, 130, 246, 0.08);
+  background: linear-gradient(135deg, rgba(58, 109, 246, 0.16), rgba(17, 183, 165, 0.1));
 }
 
 .markdown-editor__reference-name {

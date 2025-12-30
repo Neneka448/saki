@@ -4,7 +4,7 @@
  */
 
 import { EditorState, Extension, StateEffect, StateField } from '@codemirror/state'
-import { EditorView, keymap, placeholder as placeholderExt } from '@codemirror/view'
+import { EditorView, keymap, placeholder as placeholderExt, highlightActiveLine } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
@@ -75,6 +75,12 @@ export function createEditor(
 
     // 主题样式
     editorTheme,
+
+    // 行宽自适应，阅读更像文档
+    EditorView.lineWrapping,
+
+    // 高亮当前行
+    highlightActiveLine(),
 
     // 占位符
     ...(placeholder ? [placeholderExt(placeholder)] : []),
