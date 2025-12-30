@@ -35,6 +35,7 @@ export interface ChatSettings {
   apiKey: string
   modelsText: string
   systemPrompt: string
+  maxToolRounds: number
 }
 
 const SETTINGS_KEY = 'saki.chat.settings.v1'
@@ -46,6 +47,7 @@ const defaultSettings: ChatSettings = {
   apiKey: '',
   modelsText: '',
   systemPrompt: '',
+  maxToolRounds: 25,
 }
 
 const memoryStore = new Map<string, string>()

@@ -11,4 +11,40 @@ export const appBridge = {
   ping: (): Promise<{ ok: boolean; ts: number }> => {
     return ipcRenderer.invoke(channels.app.ping)
   },
+  /**
+   * 获取当前项目
+   */
+  getActiveProjectId: (): Promise<number | null> => {
+    return ipcRenderer.invoke(channels.app.getActiveProjectId)
+  },
+  /**
+   * 设置当前项目
+   */
+  setActiveProjectId: (projectId: number | null): Promise<boolean> => {
+    return ipcRenderer.invoke(channels.app.setActiveProjectId, projectId)
+  },
+  /**
+   * 监听当前项目变化
+   */
+  onActiveProjectChanged: (listener: (projectId: number | null) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, projectId: number | null) => {
+      listener(projectId ?? null)
+    }
+    ipcRenderer.on(channels.app.activeProjectChanged, handler)
+    return () => {
+      ipcRenderer.removeListener(channels.app.activeProjectChanged, handler)
+    }
+  },
+  /**
+   * 显示快速记录窗口
+   */
+  showQuickCapture: (): Promise<boolean> => {
+    return ipcRenderer.invoke(channels.app.showQuickCapture)
+  },
+  /**
+   * 隐藏快速记录窗口
+   */
+  hideQuickCapture: (): Promise<boolean> => {
+    return ipcRenderer.invoke(channels.app.hideQuickCapture)
+  },
 }

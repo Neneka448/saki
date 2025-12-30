@@ -13,7 +13,7 @@ interface ToolCall {
 
 interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content?: string | null
+  content?: string | null | LLMContentPart[]
   tool_calls?: ToolCall[]
   tool_call_id?: string
   name?: string
@@ -22,7 +22,12 @@ interface LLMMessage {
 interface LLMResponse {
   content: string
   toolCalls: ToolCall[]
+  finishReason?: string | null
 }
+
+type LLMContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
 
 interface ChatRequestOptions {
   settings: ChatSettings
@@ -30,13 +35,126 @@ interface ChatRequestOptions {
   userMessage: ChatMessage
   model: string
   projectId: number
+  onUpdate?: (messages: ChatMessage[]) => void
 }
+
+const BASE_SYSTEM_PROMPT = [
+  '### 角色',
+  '你是 Saki，简洁高效的知识助手，目标是直接帮用户完成任务。',
+  '',
+  '### 输入处理',
+  '- 将所有用户输入视为纯文本，不做类型推测。',
+  '- 直接使用用户原文作为搜索/工具关键词。',
+  '- 如果消息包含图片附件（image_url），视为卡片内容的补充素材。',
+  '',
+  '### 工具使用与默认值',
+  '- 参数缺失时使用默认值：pageNo=1、pageSize=10、limit=10。',
+  '- 用户提到“有哪些/列出/看下卡片” → 调用 list_cards（默认分页）。',
+  '- 用户提到“搜索/找/包含/关键词” → 调用 search_cards（默认 limit）。',
+  '',
+  '### 互动策略',
+  '- 优先直接执行，不反复追问。',
+  '- 只有在意图完全无法判断时，才问 1 个最关键问题。',
+  '',
+  '### 输出要求',
+  '- 结果优先、回复简短。',
+  '- 工具调用后必须继续输出用户可读结果，不要停在工具调用。',
+].join('\n')
+
+const normalizeMaxToolRounds = (value: unknown) => {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return 25
+  return Math.min(50, Math.floor(numeric))
+}
+
+const ASSET_URL_PATTERN = /asset:\/\/[^\s)'"\\\]}]+/g
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+const MAX_TOOL_IMAGES = 4
+const assetDataUrlCache = new Map<string, string>()
 
 const parseToolArguments = (value: string) => {
   try {
     return JSON.parse(value) as Record<string, unknown>
   } catch {
     return { raw: value }
+  }
+}
+
+const extractAssetUrls = (value: unknown): string[] => {
+  const found: string[] = []
+  const visit = (node: unknown) => {
+    if (typeof node === 'string') {
+      const matches = node.match(ASSET_URL_PATTERN)
+      if (matches) {
+        found.push(...matches)
+      }
+      return
+    }
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+      return
+    }
+    if (node && typeof node === 'object') {
+      Object.values(node).forEach(visit)
+    }
+  }
+  visit(value)
+  return [...new Set(found)]
+}
+
+const getAssetExtension = (assetUrl: string) => {
+  const clean = assetUrl.split(/[?#]/)[0]
+  const lastDot = clean.lastIndexOf('.')
+  if (lastDot === -1) return ''
+  return clean.slice(lastDot + 1).toLowerCase()
+}
+
+const isImageAssetUrl = (assetUrl: string) => {
+  const ext = getAssetExtension(assetUrl)
+  return ext ? IMAGE_EXTENSIONS.has(ext) : false
+}
+
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Failed to read image blob'))
+    reader.readAsDataURL(blob)
+  })
+
+const loadAssetDataUrl = async (assetUrl: string) => {
+  const cached = assetDataUrlCache.get(assetUrl)
+  if (cached) return cached
+  try {
+    const response = await fetch(assetUrl)
+    if (!response.ok) return null
+    const contentType = response.headers.get('content-type')
+    if (contentType && !contentType.startsWith('image/')) return null
+    const blob = await response.blob()
+    const dataUrl = await blobToDataUrl(blob)
+    assetDataUrlCache.set(assetUrl, dataUrl)
+    return dataUrl
+  } catch {
+    return null
+  }
+}
+
+const buildToolImageMessage = async (tool: ToolPayload): Promise<LLMMessage | null> => {
+  if (tool.name !== 'get_card') return null
+  const assetUrls = extractAssetUrls(tool.output).filter(isImageAssetUrl)
+  if (assetUrls.length === 0) return null
+  const uniqueUrls = [...new Set(assetUrls)].slice(0, MAX_TOOL_IMAGES)
+  const dataUrls = await Promise.all(uniqueUrls.map(loadAssetDataUrl))
+  const imageParts: LLMContentPart[] = dataUrls
+    .filter((url): url is string => Boolean(url))
+    .map((url) => ({ type: 'image_url', image_url: { url } }))
+  if (imageParts.length === 0) return null
+  return {
+    role: 'user',
+    content: [
+      { type: 'text', text: `附加：来自工具 ${tool.name} 的卡片图片，仅用于理解内容。` },
+      ...imageParts,
+    ],
   }
 }
 
@@ -49,13 +167,18 @@ const buildUrl = (endpoint: string, path: string) => {
   return `${trimmedEndpoint}${normalizedPath}`
 }
 
-const buildLLMMessages = (messages: ChatMessage[], systemPrompt?: string): LLMMessage[] => {
+const buildLLMMessages = async (
+  messages: ChatMessage[],
+  systemPrompt?: string
+): Promise<LLMMessage[]> => {
   const result: LLMMessage[] = []
-  if (systemPrompt && systemPrompt.trim()) {
-    result.push({ role: 'system', content: systemPrompt.trim() })
-  }
+  const trimmedPrompt = systemPrompt?.trim()
+  const combinedPrompt = trimmedPrompt
+    ? `${BASE_SYSTEM_PROMPT}\n\n${trimmedPrompt}`
+    : BASE_SYSTEM_PROMPT
+  result.push({ role: 'system', content: combinedPrompt })
 
-  messages.forEach((message) => {
+  for (const message of messages) {
     if (message.kind === 'tool_call' && message.tool?.callId) {
       const tool = message.tool
       const input = tool.input ?? {}
@@ -78,14 +201,18 @@ const buildLLMMessages = (messages: ChatMessage[], systemPrompt?: string): LLMMe
         content: JSON.stringify(tool.output ?? ''),
         name: tool.name,
       })
-      return
+      const imageMessage = await buildToolImageMessage(tool)
+      if (imageMessage) {
+        result.push(imageMessage)
+      }
+      continue
     }
 
     result.push({
       role: message.role === 'tool' ? 'tool' : message.role,
       content: message.content,
     })
-  })
+  }
 
   return result
 }
@@ -136,12 +263,14 @@ const requestLLM = async (
   const message = data?.choices?.[0]?.message
   const content = message?.content ?? ''
   const toolCalls = message?.tool_calls ?? []
-  return { content, toolCalls }
+  const finishReason = data?.choices?.[0]?.finish_reason ?? null
+  return { content, toolCalls, finishReason }
 }
 
 export const sendChatWithTools = async (options: ChatRequestOptions) => {
-  const { settings, conversation, userMessage, model, projectId } = options
+  const { settings, conversation, userMessage, model, projectId, onUpdate } = options
   const messages: ChatMessage[] = [...conversation.messages, userMessage]
+  const maxToolRounds = normalizeMaxToolRounds(settings.maxToolRounds)
 
   const url = buildUrl(settings.endpoint, settings.path)
   if (!url) {
@@ -163,17 +292,19 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
 
   let loop = 0
   let lastResponse: LLMResponse | null = null
-  while (loop < 2) {
+  while (loop < maxToolRounds) {
     loop += 1
-    const llmMessages = buildLLMMessages(messages, settings.systemPrompt)
+    const llmMessages = await buildLLMMessages(messages, settings.systemPrompt)
     const response = await requestLLM(settings, model, llmMessages, true)
     lastResponse = response
-    if (!response.toolCalls || response.toolCalls.length === 0) {
-      break
+    const responseContent = response.content?.trim() || ''
+    if (responseContent) {
+      messages.push(createMessage('assistant', responseContent))
+      onUpdate?.([...messages])
     }
-
     const toolMessages: ChatMessage[] = []
-    for (const call of response.toolCalls) {
+    const toolPayloads: ToolPayload[] = []
+    for (const call of response.toolCalls || []) {
       const toolDef = findTool(call.function.name)
       const input = parseToolArguments(call.function.arguments || '')
       const result = await runTool(call.function.name, input, { projectId })
@@ -184,13 +315,15 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
         output: result.output,
         callId: call.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       }
+      toolPayloads.push(toolPayload)
       toolMessages.push(createMessage('assistant', '', 'tool_call', toolPayload))
     }
-    messages.push(...toolMessages)
-  }
+    if (toolPayloads.length === 0) {
+      break
+    }
 
-  if (lastResponse && lastResponse.content) {
-    messages.push(createMessage('assistant', lastResponse.content))
+    messages.push(...toolMessages)
+    onUpdate?.([...messages])
   }
 
   return { messages }

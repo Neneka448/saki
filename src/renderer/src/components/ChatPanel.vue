@@ -127,6 +127,7 @@ const sendMessage = async () => {
   conversations.value = conversations.value.map((item) =>
     item.id === updatedConversation.id ? updatedConversation : item
   )
+  let streamingConversation = updatedConversation
 
   inputText.value = ''
   isLoading.value = true
@@ -138,9 +139,16 @@ const sendMessage = async () => {
       userMessage,
       model: activeModel.value,
       projectId: projectId.value,
+      onUpdate: (nextMessages) => {
+        const nextConversation = updateConversationMessages(streamingConversation, nextMessages)
+        streamingConversation = nextConversation
+        conversations.value = conversations.value.map((item) =>
+          item.id === nextConversation.id ? nextConversation : item
+        )
+      },
     })
 
-    const finalConversation = updateConversationMessages(updatedConversation, result.messages)
+    const finalConversation = updateConversationMessages(streamingConversation, result.messages)
     if (finalConversation.title === '新对话') {
       finalConversation.title = text.slice(0, 20)
       saveConversation(finalConversation)
@@ -150,8 +158,8 @@ const sendMessage = async () => {
     )
   } catch (error) {
     const err = error instanceof Error ? error.message : '对话失败'
-    const fallback = updateConversationMessages(updatedConversation, [
-      ...updatedMessages,
+    const fallback = updateConversationMessages(streamingConversation, [
+      ...streamingConversation.messages,
       createMessage('assistant', `对话出错：${err}`),
     ])
     conversations.value = conversations.value.map((item) =>
@@ -320,6 +328,15 @@ watch(() => settingsDraft.value.modelsText, () => {
           rows="3"
           placeholder="你是一个高效、严谨的知识助手..."
         ></textarea>
+        <label class="chat-settings__label">工具迭代轮数</label>
+        <input
+          v-model.number="settingsDraft.maxToolRounds"
+          class="chat-settings__input"
+          type="number"
+          min="1"
+          max="50"
+          placeholder="25"
+        />
         <button class="chat-settings__save" @click="saveSettings">保存设置</button>
       </div>
     </div>
@@ -374,44 +391,53 @@ watch(() => settingsDraft.value.modelsText, () => {
 
     <!-- 输入区域 -->
     <div class="chat-input">
-      <div class="chat-input__model">
-        <button
-          ref="modelPickerRef"
-          class="chat-input__model-btn"
-          :disabled="modelOptions.length === 0"
-          @click="toggleModelPicker"
-        >
-          <span>{{ activeModel || '选择模型' }}</span>
-          <span class="chat-input__model-arrow"></span>
-        </button>
-        <div v-if="modelPickerOpen" ref="modelPickerListRef" class="chat-input__model-list">
-          <button
-            v-for="model in modelOptions"
-            :key="model"
-            class="chat-input__model-item"
-            :class="{ 'chat-input__model-item--active': model === activeModel }"
-            @click="selectModel(model)"
-          >
-            {{ model }}
-          </button>
-        </div>
-      </div>
       <textarea
         v-model="inputText"
         class="chat-input__textarea"
         placeholder="输入消息..."
-        rows="1"
+        rows="3"
         @keydown="handleKeydown"
       />
-      <button
-        class="chat-input__send"
-        :disabled="!inputText.trim() || isLoading"
-        @click="sendMessage"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-        </svg>
-      </button>
+      <div class="chat-input__actions">
+        <div class="chat-input__model">
+          <button
+            ref="modelPickerRef"
+            class="chat-input__model-btn"
+            :class="{ 'chat-input__model-btn--active': modelPickerOpen }"
+            :disabled="modelOptions.length === 0"
+            :title="activeModel ? `当前模型：${activeModel}` : '选择模型'"
+            :aria-label="activeModel ? `当前模型：${activeModel}` : '选择模型'"
+            @click="toggleModelPicker"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 3l9 5-9 5-9-5 9-5z" />
+              <path d="M3 12l9 5 9-5" />
+              <path d="M3 17l9 5 9-5" />
+            </svg>
+          </button>
+          <div v-if="modelPickerOpen" ref="modelPickerListRef" class="chat-input__model-list">
+            <button
+              v-for="model in modelOptions"
+              :key="model"
+              class="chat-input__model-item"
+              :class="{ 'chat-input__model-item--active': model === activeModel }"
+              @click="selectModel(model)"
+            >
+              <span class="chat-input__model-item-name">{{ model }}</span>
+              <span v-if="model === activeModel" class="chat-input__model-item-check">✓</span>
+            </button>
+          </div>
+        </div>
+        <button
+          class="chat-input__send"
+          :disabled="!inputText.trim() || isLoading"
+          @click="sendMessage"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -769,12 +795,20 @@ watch(() => settingsDraft.value.modelsText, () => {
 /* 输入区域 */
 .chat-input {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
   padding: 14px 18px;
   border-top: 1px solid var(--color-border);
   background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(10px);
+}
+
+.chat-input__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .chat-input__model {
@@ -782,17 +816,19 @@ watch(() => settingsDraft.value.modelsText, () => {
 }
 
 .chat-input__model-btn {
-  height: 34px;
-  padding: 0 10px;
-  border-radius: var(--radius-sm);
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   color: var(--color-text-secondary);
   font-size: 12px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
 }
 
 .chat-input__model-btn:hover:not(:disabled) {
@@ -806,19 +842,18 @@ watch(() => settingsDraft.value.modelsText, () => {
   cursor: not-allowed;
 }
 
-.chat-input__model-arrow {
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid var(--color-text-muted);
+.chat-input__model-btn--active {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+  box-shadow: 0 0 0 3px rgba(58, 109, 246, 0.12);
 }
 
 .chat-input__model-list {
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 8px);
   left: 0;
-  min-width: 160px;
+  min-width: 180px;
+  max-height: 240px;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -829,14 +864,26 @@ watch(() => settingsDraft.value.modelsText, () => {
   padding: 6px;
   z-index: 10;
   backdrop-filter: blur(10px);
+  overflow-y: auto;
 }
 
 .chat-input__model-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 6px 8px;
   font-size: 12px;
   text-align: left;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.chat-input__model-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-input__model-item:hover {
@@ -849,8 +896,15 @@ watch(() => settingsDraft.value.modelsText, () => {
   color: var(--color-text);
 }
 
+.chat-input__model-item-check {
+  font-size: 12px;
+  color: var(--color-primary);
+}
+
 .chat-input__textarea {
-  flex: 1;
+  width: 100%;
+  min-height: 84px;
+  max-height: 180px;
   padding: 10px 12px;
   font-size: 13px;
   border-radius: var(--radius-md);

@@ -23,11 +23,13 @@ provide('currentProject', currentProject)
 // 选择项目
 const selectProject = (project: Project) => {
   currentProject.value = project
+  window.app?.setActiveProjectId?.(project.id)
 }
 
 // 返回项目选择页
 const backToProjectSelector = () => {
   currentProject.value = null
+  window.app?.setActiveProjectId?.(null)
 }
 
 // 暴露给子组件

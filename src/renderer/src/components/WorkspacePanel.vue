@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import type { CardChangeEvent } from '../../../shared/ipc/types'
 import type { CardListItem, CardDetail, TagWithMeta, TagWithUsageCount } from '../../../shared/ipc/types'
 import { getTagDisplayInfo, sortTagsByUsage } from '../utils/tagUtils'
 import CardEditView from './card/CardEditView.vue'
@@ -437,8 +438,28 @@ const getCardTagStyle = (tag: TagWithMeta) => {
   }
 }
 
+let removeCardListener: (() => void) | null = null
+
 onMounted(() => {
   loadCards()
+  removeCardListener = window.card?.onChanged?.((event: CardChangeEvent) => {
+    if (!event || event.projectId !== props.projectId) return
+    if (event.type === 'tag') {
+      loadCardTagsForCard(event.cardId)
+      if (isTagView.value) {
+        loadTags()
+      }
+      return
+    }
+    loadCards()
+    if (isTagView.value) {
+      loadTags()
+    }
+  }) || null
+})
+
+onBeforeUnmount(() => {
+  removeCardListener?.()
 })
 
 watch(newTagName, () => {

@@ -84,6 +84,15 @@ export interface UpdateCardMetaParams {
     meta: Partial<Omit<CardMeta, 'cardId'>>
 }
 
+export type CardChangeType = 'create' | 'update' | 'delete' | 'tag'
+
+export interface CardChangeEvent {
+    type: CardChangeType
+    cardId: number
+    projectId: number
+    payload?: Record<string, unknown>
+}
+
 // ============ 标签相关类型 ============
 
 export interface TagMeta {

@@ -9,6 +9,7 @@ import type {
     UpdateCardParams,
     UpdateCardMetaParams,
     TagWithMeta,
+    CardChangeEvent,
 } from '../../shared/ipc/types'
 
 /**
@@ -111,5 +112,18 @@ export const cardBridge = {
      */
     getByTags(tagIds: number[]): Promise<IpcResult<CardListItem[]>> {
         return ipcRenderer.invoke(channels.card.getByTags, tagIds)
+    },
+
+    /**
+     * 监听卡片变更
+     */
+    onChanged(listener: (event: CardChangeEvent) => void) {
+        const handler = (_event: Electron.IpcRendererEvent, payload: CardChangeEvent) => {
+            listener(payload)
+        }
+        ipcRenderer.on(channels.card.changed, handler)
+        return () => {
+            ipcRenderer.removeListener(channels.card.changed, handler)
+        }
     },
 }

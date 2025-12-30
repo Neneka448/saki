@@ -6,6 +6,11 @@ export const channels = {
   // 应用相关
   app: {
     ping: 'app:ping',
+    getActiveProjectId: 'app:getActiveProjectId',
+    setActiveProjectId: 'app:setActiveProjectId',
+    activeProjectChanged: 'app:activeProjectChanged',
+    showQuickCapture: 'app:showQuickCapture',
+    hideQuickCapture: 'app:hideQuickCapture',
   },
 
   // 项目相关
@@ -25,6 +30,7 @@ export const channels = {
     update: 'card:update',
     updateMeta: 'card:updateMeta',
     delete: 'card:delete',
+    changed: 'card:changed',
     // 标签操作
     getTags: 'card:getTags',
     addTag: 'card:addTag',

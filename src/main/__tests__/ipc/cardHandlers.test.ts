@@ -6,6 +6,9 @@ import type { CreateCardParams, UpdateCardParams } from '../../../shared/ipc/typ
 // Mock electron
 vi.mock('electron', () => ({
     ipcMain: createIpcMainMock(),
+    BrowserWindow: {
+        getAllWindows: () => [],
+    },
 }))
 
 describe('Card IPC Handlers', () => {

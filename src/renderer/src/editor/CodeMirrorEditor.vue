@@ -12,7 +12,7 @@
 
 import { ref, onMounted, onBeforeUnmount, watch, shallowRef } from 'vue'
 import { EditorView } from '@codemirror/view'
-import { Compartment } from '@codemirror/state'
+import { Compartment, type Extension } from '@codemirror/state'
 import type { CardListItem } from '../../../shared/ipc/types'
 import { createEditor, setEditorContent } from './core'
 import { referenceCompletion, type ReferenceCandidate } from './extensions/referenceCompletion'
@@ -25,6 +25,7 @@ const props = defineProps<{
   autoFocus?: boolean
   referenceCandidates?: CardListItem[]
   currentCardId?: number
+  extensions?: Extension[]
 }>()
 
 const emit = defineEmits<{
@@ -93,6 +94,8 @@ onMounted(() => {
       
       // 引用补全（使用 Compartment 以便动态更新）
       referenceCompartment.of(buildReferenceExtension()),
+
+      ...(props.extensions || []),
     ],
   })
   

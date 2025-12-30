@@ -1,7 +1,8 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { channels } from '../../../shared/ipc/channels'
 import type { KernelApi } from '../../../kernel'
 import type {
+    CardChangeEvent,
     CreateCardParams,
     UpdateCardParams,
     UpdateCardMetaParams,
@@ -13,9 +14,28 @@ import type {
 export function registerCardHandlers(kernel: KernelApi): void {
     const { card } = kernel
 
+    const broadcastCardChange = (event: CardChangeEvent) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+            window.webContents.send(channels.card.changed, event)
+        }
+    }
+
+    const resolveProjectId = (cardId: number): number | null => {
+        const detail = card.getById(cardId)
+        return detail.success ? detail.data.projectId : null
+    }
+
     // 创建卡片
     ipcMain.handle(channels.card.create, (_, params: CreateCardParams) => {
-        return card.create(params.projectId, params.content, params.meta)
+        const result = card.create(params.projectId, params.content, params.meta)
+        if (result.success) {
+            broadcastCardChange({
+                type: 'create',
+                cardId: result.data.id,
+                projectId: params.projectId,
+            })
+        }
+        return result
     })
 
     // 获取卡片详情
@@ -30,7 +50,15 @@ export function registerCardHandlers(kernel: KernelApi): void {
 
     // 更新卡片
     ipcMain.handle(channels.card.update, (_, params: UpdateCardParams) => {
-        return card.update(params.id, params.content, params.meta)
+        const result = card.update(params.id, params.content, params.meta)
+        if (result.success) {
+            broadcastCardChange({
+                type: 'update',
+                cardId: result.data.id,
+                projectId: result.data.projectId,
+            })
+        }
+        return result
     })
 
     // 更新卡片元信息
@@ -40,7 +68,16 @@ export function registerCardHandlers(kernel: KernelApi): void {
 
     // 删除卡片
     ipcMain.handle(channels.card.delete, (_, id: number) => {
-        return card.delete(id)
+        const projectId = resolveProjectId(id)
+        const result = card.delete(id)
+        if (result.success && projectId !== null) {
+            broadcastCardChange({
+                type: 'delete',
+                cardId: id,
+                projectId,
+            })
+        }
+        return result
     })
 
     // 获取卡片的标签
@@ -50,12 +87,32 @@ export function registerCardHandlers(kernel: KernelApi): void {
 
     // 为卡片添加标签
     ipcMain.handle(channels.card.addTag, (_, params: { cardId: number; tagId: number }) => {
-        return card.addTag(params.cardId, params.tagId)
+        const projectId = resolveProjectId(params.cardId)
+        const result = card.addTag(params.cardId, params.tagId)
+        if (result.success && projectId !== null) {
+            broadcastCardChange({
+                type: 'tag',
+                cardId: params.cardId,
+                projectId,
+                payload: { tagId: params.tagId, action: 'add' },
+            })
+        }
+        return result
     })
 
     // 移除卡片的标签
     ipcMain.handle(channels.card.removeTag, (_, params: { cardId: number; tagId: number }) => {
-        return card.removeTag(params.cardId, params.tagId)
+        const projectId = resolveProjectId(params.cardId)
+        const result = card.removeTag(params.cardId, params.tagId)
+        if (result.success && projectId !== null) {
+            broadcastCardChange({
+                type: 'tag',
+                cardId: params.cardId,
+                projectId,
+                payload: { tagId: params.tagId, action: 'remove' },
+            })
+        }
+        return result
     })
 
     // 添加卡片引用

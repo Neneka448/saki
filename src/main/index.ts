@@ -1,7 +1,8 @@
-import { app, BrowserWindow, protocol } from 'electron'
+import { app, BrowserWindow, protocol, globalShortcut } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { createMainWindow } from './windows/mainWindow'
+import { showQuickCaptureWindow } from './windows/quickCaptureWindow'
 import { registerIpcHandlers } from './ipc'
 import { createKernel, KernelApi } from '../kernel'
 
@@ -83,6 +84,14 @@ app.whenReady().then(() => {
   // 创建主窗口
   createMainWindow()
 
+  const quickCaptureShortcut = 'CommandOrControl+Shift+N'
+  const registered = globalShortcut.register(quickCaptureShortcut, () => {
+    showQuickCaptureWindow()
+  })
+  if (!registered) {
+    console.warn(`[Main] Failed to register shortcut: ${quickCaptureShortcut}`)
+  }
+
   app.on('activate', () => {
     if (process.platform === 'darwin' && BrowserWindow.getAllWindows().length === 0) {
       createMainWindow()
@@ -102,4 +111,8 @@ app.on('before-quit', () => {
     kernel.close()
     console.log('[Main] Kernel closed')
   }
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })

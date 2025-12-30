@@ -1,14 +1,6 @@
-import { BrowserWindow, app } from 'electron';
-import path from 'path';
-
-const getRendererUrl = () => {
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
-  if (devServerUrl) {
-    return devServerUrl;
-  }
-
-  return path.join(app.getAppPath(), 'dist', 'renderer', 'index.html');
-};
+import { BrowserWindow } from 'electron'
+import path from 'path'
+import { getRendererUrl } from './rendererUrl'
 
 export const createMainWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -20,15 +12,15 @@ export const createMainWindow = () => {
       nodeIntegration: false,
       sandbox: false
     }
-  });
+  })
 
-  const rendererUrl = getRendererUrl();
+  const rendererUrl = getRendererUrl('index.html')
   if (rendererUrl.startsWith('http')) {
-    mainWindow.loadURL(rendererUrl);
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    mainWindow.loadURL(rendererUrl)
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
-    mainWindow.loadFile(rendererUrl);
+    mainWindow.loadFile(rendererUrl)
   }
 
-  return mainWindow;
-};
+  return mainWindow
+}
