@@ -11,6 +11,9 @@ export const channels = {
     activeProjectChanged: 'app:activeProjectChanged',
     showQuickCapture: 'app:showQuickCapture',
     hideQuickCapture: 'app:hideQuickCapture',
+    getQuickCaptureShortcut: 'app:getQuickCaptureShortcut',
+    setQuickCaptureShortcut: 'app:setQuickCaptureShortcut',
+    resetQuickCaptureShortcut: 'app:resetQuickCaptureShortcut',
   },
 
   // 项目相关

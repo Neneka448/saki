@@ -58,8 +58,8 @@ export const createQuickCaptureWindow = () => {
   }
 
   window.on('blur', () => {
-    if (window.isVisible()) {
-      window.hide()
+    if (!window.isDestroyed()) {
+      window.close()
     }
   })
 
@@ -75,15 +75,17 @@ export const createQuickCaptureWindow = () => {
 
 export const showQuickCaptureWindow = () => {
   const window = createQuickCaptureWindow()
+  if (process.platform === 'darwin' && typeof window.moveToActiveSpace === 'function') {
+    window.moveToActiveSpace()
+  }
   positionWindow(window)
   window.show()
   window.focus()
 }
 
 export const hideQuickCaptureWindow = () => {
-  if (quickCaptureWindow?.isVisible()) {
-    quickCaptureWindow.hide()
-  }
+  if (!quickCaptureWindow || quickCaptureWindow.isDestroyed()) return
+  quickCaptureWindow.close()
 }
 
 export const getQuickCaptureWindow = () => quickCaptureWindow

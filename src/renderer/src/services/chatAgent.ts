@@ -43,9 +43,11 @@ const BASE_SYSTEM_PROMPT = [
   '你是 Saki，简洁高效的知识助手，目标是直接帮用户完成任务。',
   '',
   '### 输入处理',
-  '- 将所有用户输入视为纯文本，不做类型推测。',
+  '- 对用户文本保持原样，不把 Markdown 图片语法当图片或命令。',
   '- 直接使用用户原文作为搜索/工具关键词。',
-  '- 如果消息包含图片附件（image_url），视为卡片内容的补充素材。',
+  '- 如果消息包含 image_url 附件，按图片处理并结合文本理解。',
+  '- 图片附件会附带“图片ID: ...”，仅用于引用，哪怕是 ![]() 也当纯文本。',
+  '- 收到图片时先阅读并用一句话提炼图像内容，再继续回答。',
   '',
   '### 工具使用与默认值',
   '- 参数缺失时使用默认值：pageNo=1、pageSize=10、limit=10。',
@@ -68,6 +70,7 @@ const normalizeMaxToolRounds = (value: unknown) => {
 }
 
 const ASSET_URL_PATTERN = /asset:\/\/[^\s)'"\\\]}]+/g
+const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*?]\(\s*(asset:\/\/[^)\s]+)(?:\s+\"[^\"]*\")?\s*\)/g
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
 const MAX_TOOL_IMAGES = 4
 const assetDataUrlCache = new Map<string, string>()
@@ -102,6 +105,30 @@ const extractAssetUrls = (value: unknown): string[] => {
   return [...new Set(found)]
 }
 
+const extractMarkdownImageRefs = (value: unknown): Array<{ id: string; url: string }> => {
+  const refs: Array<{ id: string; url: string }> = []
+  const visit = (node: unknown) => {
+    if (typeof node === 'string') {
+      for (const match of node.matchAll(MARKDOWN_IMAGE_PATTERN)) {
+        const url = match[1]
+        if (url) {
+          refs.push({ id: match[0], url })
+        }
+      }
+      return
+    }
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+      return
+    }
+    if (node && typeof node === 'object') {
+      Object.values(node).forEach(visit)
+    }
+  }
+  visit(value)
+  return refs
+}
+
 const getAssetExtension = (assetUrl: string) => {
   const clean = assetUrl.split(/[?#]/)[0]
   const lastDot = clean.lastIndexOf('.')
@@ -113,6 +140,16 @@ const isImageAssetUrl = (assetUrl: string) => {
   const ext = getAssetExtension(assetUrl)
   return ext ? IMAGE_EXTENSIONS.has(ext) : false
 }
+
+const hashString = (value: string) => {
+  let hash = 5381
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(i)
+  }
+  return (hash >>> 0).toString(16)
+}
+
+const buildAutoImageId = (seed: string) => `image-${hashString(seed).slice(0, 10)}`
 
 const blobToDataUrl = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -139,23 +176,73 @@ const loadAssetDataUrl = async (assetUrl: string) => {
   }
 }
 
-const buildToolImageMessage = async (tool: ToolPayload): Promise<LLMMessage | null> => {
-  if (tool.name !== 'get_card') return null
+const buildImagePartsWithIds = (images: Array<{ id: string; dataUrl: string }>): LLMContentPart[] => {
+  const parts: LLMContentPart[] = []
+  images.forEach((image) => {
+    parts.push({ type: 'text', text: `图片ID: ${image.id}` })
+    parts.push({ type: 'image_url', image_url: { url: image.dataUrl } })
+  })
+  return parts
+}
+
+const buildToolImageReferences = async (
+  tool: ToolPayload
+): Promise<Array<{ id: string; dataUrl: string }>> => {
+  if (tool.name !== 'get_card') return []
   const assetUrls = extractAssetUrls(tool.output).filter(isImageAssetUrl)
-  if (assetUrls.length === 0) return null
+  if (assetUrls.length === 0) return []
+  const markdownRefs = extractMarkdownImageRefs(tool.output)
+  const markdownByUrl = new Map<string, string>()
+  markdownRefs.forEach((ref) => {
+    if (!markdownByUrl.has(ref.url)) {
+      markdownByUrl.set(ref.url, ref.id)
+    }
+  })
   const uniqueUrls = [...new Set(assetUrls)].slice(0, MAX_TOOL_IMAGES)
   const dataUrls = await Promise.all(uniqueUrls.map(loadAssetDataUrl))
-  const imageParts: LLMContentPart[] = dataUrls
-    .filter((url): url is string => Boolean(url))
-    .map((url) => ({ type: 'image_url', image_url: { url } }))
+  return uniqueUrls.flatMap((url, index) => {
+    const dataUrl = dataUrls[index]
+    if (!dataUrl) return []
+    const id = markdownByUrl.get(url) ?? buildAutoImageId(url)
+    return [{ id, dataUrl }]
+  })
+}
+
+const buildToolImageMessage = async (tool: ToolPayload): Promise<LLMMessage | null> => {
+  const imageRefs = await buildToolImageReferences(tool)
+  const imageParts = buildImagePartsWithIds(imageRefs)
   if (imageParts.length === 0) return null
   return {
     role: 'user',
     content: [
-      { type: 'text', text: `附加：来自工具 ${tool.name} 的卡片图片，仅用于理解内容。` },
+      { type: 'text', text: '以下是卡片图片与图片ID，请结合工具结果回答用户问题。' },
       ...imageParts,
     ],
   }
+}
+
+const findLatestCardTool = (messages: ChatMessage[]): ToolPayload | null => {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (message.kind === 'tool_call' && message.tool?.name === 'get_card') {
+      return message.tool
+    }
+  }
+  return null
+}
+
+const mergeContentWithParts = (
+  content: LLMMessage['content'],
+  parts: LLMContentPart[]
+): LLMContentPart[] => {
+  const merged: LLMContentPart[] = []
+  if (Array.isArray(content)) {
+    merged.push(...content)
+  } else if (content) {
+    merged.push({ type: 'text', text: String(content) })
+  }
+  merged.push(...parts)
+  return merged
 }
 
 const buildUrl = (endpoint: string, path: string) => {
@@ -172,13 +259,27 @@ const buildLLMMessages = async (
   systemPrompt?: string
 ): Promise<LLMMessage[]> => {
   const result: LLMMessage[] = []
+  const lastNonToolCallIndex = (() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]?.kind !== 'tool_call') {
+        return i
+      }
+    }
+    return -1
+  })()
+  const lastMessage = messages[messages.length - 1]
+  const shouldAttachStickyImages = lastMessage?.role === 'user'
+  const latestCardTool = shouldAttachStickyImages ? findLatestCardTool(messages) : null
+  const stickyImageRefs = latestCardTool ? await buildToolImageReferences(latestCardTool) : []
+  const stickyImageParts = buildImagePartsWithIds(stickyImageRefs)
   const trimmedPrompt = systemPrompt?.trim()
   const combinedPrompt = trimmedPrompt
     ? `${BASE_SYSTEM_PROMPT}\n\n${trimmedPrompt}`
     : BASE_SYSTEM_PROMPT
   result.push({ role: 'system', content: combinedPrompt })
 
-  for (const message of messages) {
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index]
     if (message.kind === 'tool_call' && message.tool?.callId) {
       const tool = message.tool
       const input = tool.input ?? {}
@@ -201,17 +302,24 @@ const buildLLMMessages = async (
         content: JSON.stringify(tool.output ?? ''),
         name: tool.name,
       })
-      const imageMessage = await buildToolImageMessage(tool)
-      if (imageMessage) {
-        result.push(imageMessage)
+      if (index > lastNonToolCallIndex) {
+        const imageMessage = await buildToolImageMessage(tool)
+        if (imageMessage) {
+          result.push(imageMessage)
+        }
       }
       continue
     }
 
-    result.push({
+    const isLastUserMessage = shouldAttachStickyImages && index === messages.length - 1
+    const content = isLastUserMessage && stickyImageParts.length > 0
+      ? mergeContentWithParts(message.content, stickyImageParts)
+      : message.content
+    const nextMessage: LLMMessage = {
       role: message.role === 'tool' ? 'tool' : message.role,
-      content: message.content,
-    })
+      content,
+    }
+    result.push(nextMessage)
   }
 
   return result

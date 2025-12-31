@@ -47,4 +47,24 @@ export const appBridge = {
   hideQuickCapture: (): Promise<boolean> => {
     return ipcRenderer.invoke(channels.app.hideQuickCapture)
   },
+  /**
+   * 获取快速记录快捷键
+   */
+  getQuickCaptureShortcut: (): Promise<{ shortcut: string; defaultShortcut: string }> => {
+    return ipcRenderer.invoke(channels.app.getQuickCaptureShortcut)
+  },
+  /**
+   * 设置快速记录快捷键
+   */
+  setQuickCaptureShortcut: (
+    shortcut: string
+  ): Promise<{ ok: boolean; shortcut: string; defaultShortcut: string; error?: string }> => {
+    return ipcRenderer.invoke(channels.app.setQuickCaptureShortcut, shortcut)
+  },
+  /**
+   * 重置快速记录快捷键
+   */
+  resetQuickCaptureShortcut: (): Promise<{ ok: boolean; shortcut: string; defaultShortcut: string; error?: string }> => {
+    return ipcRenderer.invoke(channels.app.resetQuickCaptureShortcut)
+  },
 }

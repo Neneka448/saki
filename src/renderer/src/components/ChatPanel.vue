@@ -27,7 +27,8 @@ const currentProject = inject<{ value: Project | null }>('currentProject', { val
 
 const inputText = ref('')
 const isLoading = ref(false)
-const panelTab = ref<'none' | 'history' | 'settings'>('none')
+const panelTab = ref<'none' | 'history' | 'control'>('none')
+const controlTab = ref<'session' | 'shortcuts'>('session')
 const expandedToolIds = ref(new Set<string>())
 
 const settings = ref<ChatSettings>(loadChatSettings())
@@ -40,8 +41,22 @@ const modelPickerOpen = ref(false)
 const modelPickerRef = ref<HTMLElement | null>(null)
 const modelPickerListRef = ref<HTMLElement | null>(null)
 
+const quickCaptureShortcut = ref('')
+const defaultQuickCaptureShortcut = ref('CommandOrControl+Shift+N')
+const shortcutRecording = ref(false)
+const shortcutKeys = ref<string[]>([])
+const shortcutError = ref('')
+
 const projectId = computed(() => currentProject?.value?.id ?? null)
 const modelOptions = computed(() => getModelsFromSettings(settingsDraft.value))
+const shortcutKeysDisplay = computed(() => shortcutKeys.value)
+const shortcutPreview = computed(() => {
+  if (shortcutRecording.value) {
+    return shortcutKeys.value.length > 0 ? shortcutKeys.value.join(' + ') : '等待输入...'
+  }
+  return quickCaptureShortcut.value || defaultQuickCaptureShortcut.value
+})
+const shortcutProgress = computed(() => `${shortcutKeys.value.length}/3`)
 const activeConversation = computed(() => {
   if (!activeConversationId.value) return null
   return conversations.value.find((item) => item.id === activeConversationId.value) || null
@@ -177,7 +192,7 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 }
 
-const togglePanel = (tab: 'history' | 'settings') => {
+const togglePanel = (tab: 'history' | 'control') => {
   panelTab.value = panelTab.value === tab ? 'none' : tab
 }
 
@@ -219,17 +234,206 @@ const handleOutsideClick = (event: MouseEvent) => {
   modelPickerOpen.value = false
 }
 
+const normalizeKeyLabel = (key: string) => {
+  const normalized = key.trim()
+  if (!normalized) return ''
+  const map: Record<string, string> = {
+    Control: 'Ctrl',
+    Meta: 'Meta',
+    Alt: 'Alt',
+    Shift: 'Shift',
+    Escape: 'Esc',
+    ' ': 'Space',
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+    PageUp: 'PageUp',
+    PageDown: 'PageDown',
+    Backspace: 'Backspace',
+    Delete: 'Delete',
+    Enter: 'Enter',
+    Tab: 'Tab',
+    CapsLock: 'CapsLock',
+  }
+  if (map[normalized]) return map[normalized]
+  if (normalized.length === 1) return normalized.toUpperCase()
+  return normalized
+}
+
+const buildAccelerator = (keys: string[]) => {
+  const modifierMap: Record<string, string> = {
+    Ctrl: 'CommandOrControl',
+    Meta: 'CommandOrControl',
+    Shift: 'Shift',
+    Alt: 'Alt',
+  }
+  const nameMap: Record<string, string> = {
+    Esc: 'Escape',
+    Space: 'Space',
+    Up: 'Up',
+    Down: 'Down',
+    Left: 'Left',
+    Right: 'Right',
+    PageUp: 'PageUp',
+    PageDown: 'PageDown',
+    Backspace: 'Backspace',
+    Delete: 'Delete',
+    Enter: 'Enter',
+    Tab: 'Tab',
+    CapsLock: 'CapsLock',
+  }
+  if (keys.some((key) => key.startsWith('Mouse'))) {
+    shortcutError.value = '鼠标按键暂不支持全局快捷键'
+    return null
+  }
+  const modifiers = new Set<string>()
+  const mainKeys: string[] = []
+  keys.forEach((key) => {
+    const mappedModifier = modifierMap[key]
+    if (mappedModifier) {
+      modifiers.add(mappedModifier)
+      return
+    }
+    const mappedKey = nameMap[key] || key
+    mainKeys.push(mappedKey)
+  })
+  if (mainKeys.length !== 1) {
+    shortcutError.value = '请只包含一个主键（例如字母或数字）'
+    return null
+  }
+  const orderedModifiers = ['CommandOrControl', 'Shift', 'Alt'].filter((item) => modifiers.has(item))
+  return [...orderedModifiers, mainKeys[0]].join('+')
+}
+
+const updateQuickCaptureShortcut = async (keys: string[]) => {
+  shortcutError.value = ''
+  const accelerator = buildAccelerator(keys)
+  if (!accelerator) return
+  const result = await window.app?.setQuickCaptureShortcut?.(accelerator)
+  if (!result?.ok) {
+    shortcutError.value = result?.error || '设置快捷键失败'
+    return
+  }
+  quickCaptureShortcut.value = result.shortcut
+  defaultQuickCaptureShortcut.value = result.defaultShortcut || defaultQuickCaptureShortcut.value
+  shortcutKeys.value = []
+}
+
+const appendShortcutKey = async (key: string) => {
+  if (!key) return
+  if (shortcutKeys.value.includes(key)) return
+  const next = [...shortcutKeys.value, key].slice(0, 3)
+  shortcutKeys.value = next
+  if (next.length >= 3) {
+    await updateQuickCaptureShortcut(next)
+    stopShortcutRecording()
+  }
+}
+
+const handleShortcutKeydown = async (event: KeyboardEvent) => {
+  if (!shortcutRecording.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.repeat) return
+  const keys: string[] = []
+  if (event.ctrlKey) keys.push('Ctrl')
+  if (event.metaKey) keys.push('Meta')
+  if (event.shiftKey) keys.push('Shift')
+  if (event.altKey) keys.push('Alt')
+  const mainKey = normalizeKeyLabel(event.key)
+  if (mainKey && !['Ctrl', 'Meta', 'Shift', 'Alt'].includes(mainKey)) {
+    keys.push(mainKey)
+  } else if (keys.length === 0) {
+    keys.push(mainKey)
+  }
+  for (const key of keys) {
+    await appendShortcutKey(key)
+  }
+}
+
+const handleShortcutMousedown = async (event: MouseEvent) => {
+  if (!shortcutRecording.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  const buttonMap: Record<number, string> = {
+    0: 'MouseLeft',
+    1: 'MouseMiddle',
+    2: 'MouseRight',
+    3: 'MouseBack',
+    4: 'MouseForward',
+  }
+  await appendShortcutKey(buttonMap[event.button] || 'MouseButton')
+}
+
+const startShortcutRecording = () => {
+  shortcutError.value = ''
+  shortcutRecording.value = true
+  shortcutKeys.value = []
+  window.addEventListener('keydown', handleShortcutKeydown, true)
+  window.addEventListener('mousedown', handleShortcutMousedown, true)
+}
+
+const stopShortcutRecording = () => {
+  if (!shortcutRecording.value) return
+  shortcutRecording.value = false
+  window.removeEventListener('keydown', handleShortcutKeydown, true)
+  window.removeEventListener('mousedown', handleShortcutMousedown, true)
+}
+
+const toggleShortcutRecording = () => {
+  if (shortcutRecording.value) {
+    stopShortcutRecording()
+    return
+  }
+  startShortcutRecording()
+}
+
+const resetShortcut = async () => {
+  shortcutError.value = ''
+  const result = await window.app?.resetQuickCaptureShortcut?.()
+  if (!result?.ok) {
+    shortcutError.value = result?.error || '重置失败'
+    return
+  }
+  quickCaptureShortcut.value = result.shortcut
+  defaultQuickCaptureShortcut.value = result.defaultShortcut || defaultQuickCaptureShortcut.value
+  shortcutKeys.value = []
+  stopShortcutRecording()
+}
+
+const loadShortcutSettings = async () => {
+  const result = await window.app?.getQuickCaptureShortcut?.()
+  if (!result) return
+  quickCaptureShortcut.value = result.shortcut
+  defaultQuickCaptureShortcut.value = result.defaultShortcut || defaultQuickCaptureShortcut.value
+}
+
 onMounted(() => {
   ensureConversation()
+  loadShortcutSettings()
   document.addEventListener('click', handleOutsideClick)
 })
 
 onBeforeUnmount(() => {
+  stopShortcutRecording()
   document.removeEventListener('click', handleOutsideClick)
 })
 
 watch(projectId, () => {
   ensureConversation()
+})
+
+watch(panelTab, (value) => {
+  if (value !== 'control') {
+    stopShortcutRecording()
+  }
+})
+
+watch(controlTab, (value) => {
+  if (value !== 'shortcuts') {
+    stopShortcutRecording()
+  }
 })
 
 watch(() => settingsDraft.value.modelsText, () => {
@@ -247,12 +451,25 @@ watch(() => settingsDraft.value.modelsText, () => {
   <div class="chat-panel">
     <!-- 头部 -->
     <header class="chat-header">
-      <button class="chat-header__back" title="返回知识库列表" @click="backToProjectSelector">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-          <polyline points="9 22 9 12 15 12 15 22" />
-        </svg>
-      </button>
+      <div class="chat-header__left">
+        <button class="chat-header__back" title="返回知识库列表" @click="backToProjectSelector">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+        </button>
+        <button
+          class="chat-header__control"
+          :class="{ 'chat-header__control--active': panelTab === 'control' }"
+          title="控制面板"
+          @click="togglePanel('control')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+          </svg>
+        </button>
+      </div>
       <div class="chat-header__info">
         <h2 class="chat-header__title">Saki</h2>
         <span class="chat-header__subtitle">知识助手</span>
@@ -279,13 +496,6 @@ watch(() => settingsDraft.value.modelsText, () => {
       >
         对话历史
       </button>
-      <button
-        class="chat-panel__tab"
-        :class="{ 'chat-panel__tab--active': panelTab === 'settings' }"
-        @click="togglePanel('settings')"
-      >
-        控制面板
-      </button>
     </div>
 
     <div v-if="panelTab === 'history'" class="chat-panel__section">
@@ -306,38 +516,90 @@ watch(() => settingsDraft.value.modelsText, () => {
       </div>
     </div>
 
-    <div v-else-if="panelTab === 'settings'" class="chat-panel__section">
-      <div class="chat-settings">
-        <label class="chat-settings__label">Endpoint</label>
-        <input v-model="settingsDraft.endpoint" class="chat-settings__input" type="text" placeholder="https://api.openai.com" />
-        <label class="chat-settings__label">Path</label>
-        <input v-model="settingsDraft.path" class="chat-settings__input" type="text" placeholder="/v1/chat/completions" />
-        <label class="chat-settings__label">API Key</label>
-        <input v-model="settingsDraft.apiKey" class="chat-settings__input" type="password" placeholder="sk-..." />
-        <label class="chat-settings__label">模型列表（换行分隔）</label>
-        <textarea
-          v-model="settingsDraft.modelsText"
-          class="chat-settings__textarea"
-          rows="3"
-          placeholder="gpt-4o-mini\nqwen-2.5"
-        ></textarea>
-        <label class="chat-settings__label">系统提示词</label>
-        <textarea
-          v-model="settingsDraft.systemPrompt"
-          class="chat-settings__textarea"
-          rows="3"
-          placeholder="你是一个高效、严谨的知识助手..."
-        ></textarea>
-        <label class="chat-settings__label">工具迭代轮数</label>
-        <input
-          v-model.number="settingsDraft.maxToolRounds"
-          class="chat-settings__input"
-          type="number"
-          min="1"
-          max="50"
-          placeholder="25"
-        />
-        <button class="chat-settings__save" @click="saveSettings">保存设置</button>
+    <div v-else-if="panelTab === 'control'" class="chat-panel__section">
+      <div class="chat-control">
+        <div class="chat-control__tabs">
+          <button
+            class="chat-control__tab"
+            :class="{ 'chat-control__tab--active': controlTab === 'session' }"
+            @click="controlTab = 'session'"
+          >
+            会话设置
+          </button>
+          <button
+            class="chat-control__tab"
+            :class="{ 'chat-control__tab--active': controlTab === 'shortcuts' }"
+            @click="controlTab = 'shortcuts'"
+          >
+            快捷键
+          </button>
+        </div>
+
+        <div v-if="controlTab === 'session'" class="chat-settings">
+          <label class="chat-settings__label">Endpoint</label>
+          <input v-model="settingsDraft.endpoint" class="chat-settings__input" type="text" placeholder="https://api.openai.com" />
+          <label class="chat-settings__label">Path</label>
+          <input v-model="settingsDraft.path" class="chat-settings__input" type="text" placeholder="/v1/chat/completions" />
+          <label class="chat-settings__label">API Key</label>
+          <input v-model="settingsDraft.apiKey" class="chat-settings__input" type="password" placeholder="sk-..." />
+          <label class="chat-settings__label">模型列表（换行分隔）</label>
+          <textarea
+            v-model="settingsDraft.modelsText"
+            class="chat-settings__textarea"
+            rows="3"
+            placeholder="gpt-4o-mini\nqwen-2.5"
+          ></textarea>
+          <label class="chat-settings__label">系统提示词</label>
+          <textarea
+            v-model="settingsDraft.systemPrompt"
+            class="chat-settings__textarea"
+            rows="3"
+            placeholder="你是一个高效、严谨的知识助手..."
+          ></textarea>
+          <label class="chat-settings__label">工具迭代轮数</label>
+          <input
+            v-model.number="settingsDraft.maxToolRounds"
+            class="chat-settings__input"
+            type="number"
+            min="1"
+            max="50"
+            placeholder="25"
+          />
+          <button class="chat-settings__save" @click="saveSettings">保存设置</button>
+        </div>
+
+        <div v-else class="chat-hotkey">
+          <div class="chat-hotkey__row">
+            <button
+              class="chat-hotkey__capture"
+              :class="{ 'chat-hotkey__capture--active': shortcutRecording }"
+              @click="toggleShortcutRecording"
+            >
+              <span class="chat-hotkey__capture-label">
+                {{ shortcutRecording ? '录制中' : '点击录制' }}
+              </span>
+              <span class="chat-hotkey__capture-keys">
+                <span v-if="shortcutKeysDisplay.length === 0" class="chat-hotkey__capture-placeholder">
+                  {{ shortcutPreview }}
+                </span>
+                <span v-else class="chat-hotkey__capture-list">
+                  <span
+                    v-for="key in shortcutKeysDisplay"
+                    :key="key"
+                    class="chat-hotkey__key"
+                  >
+                    {{ key }}
+                  </span>
+                </span>
+              </span>
+              <span v-if="shortcutRecording" class="chat-hotkey__progress">{{ shortcutProgress }}</span>
+            </button>
+            <button class="chat-hotkey__reset" @click="resetShortcut">恢复默认</button>
+          </div>
+          <div class="chat-hotkey__hint">点击后输入 3 个按键，自动保存为快捷键。</div>
+          <div v-if="shortcutError" class="chat-hotkey__error">{{ shortcutError }}</div>
+          <div class="chat-hotkey__current">当前快捷键：{{ quickCaptureShortcut || defaultQuickCaptureShortcut }}</div>
+        </div>
       </div>
     </div>
 
@@ -468,6 +730,13 @@ watch(() => settingsDraft.value.modelsText, () => {
   -webkit-app-region: drag;
 }
 
+.chat-header__left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
 .chat-header__info {
   display: flex;
   align-items: baseline;
@@ -493,6 +762,7 @@ watch(() => settingsDraft.value.modelsText, () => {
 }
 
 .chat-header__back,
+.chat-header__control,
 .chat-header__action {
   width: 32px;
   height: 32px;
@@ -509,12 +779,19 @@ watch(() => settingsDraft.value.modelsText, () => {
 }
 
 .chat-header__back:hover,
+.chat-header__control:hover,
 .chat-header__action:hover {
   background: white;
   border-color: var(--color-border);
   color: var(--color-text);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
+}
+
+.chat-header__control--active {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+  box-shadow: 0 0 0 3px rgba(58, 109, 246, 0.12);
 }
 
 .chat-panel__tabs {
@@ -550,6 +827,41 @@ watch(() => settingsDraft.value.modelsText, () => {
 .chat-panel__section {
   padding: 10px 16px 14px;
   border-bottom: 1px solid var(--color-border);
+}
+
+.chat-control {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-control__tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-control__tab {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  transition: all 0.2s ease;
+}
+
+.chat-control__tab:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  background: white;
+}
+
+.chat-control__tab--active {
+  color: var(--color-text);
+  background: linear-gradient(135deg, rgba(58, 109, 246, 0.18), rgba(17, 183, 165, 0.12));
+  border-color: rgba(58, 109, 246, 0.45);
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-history {
@@ -650,6 +962,115 @@ watch(() => settingsDraft.value.modelsText, () => {
   color: white;
   font-size: 12px;
   box-shadow: 0 8px 16px rgba(58, 109, 246, 0.25);
+}
+
+.chat-hotkey {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-hotkey__row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.chat-hotkey__capture {
+  flex: 1;
+  min-height: 52px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  color: var(--color-text);
+  transition: all 0.2s ease;
+}
+
+.chat-hotkey__capture:hover {
+  border-color: var(--color-border-strong);
+  background: white;
+}
+
+.chat-hotkey__capture--active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(58, 109, 246, 0.12);
+}
+
+.chat-hotkey__capture-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  min-width: 56px;
+}
+
+.chat-hotkey__capture-keys {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.chat-hotkey__capture-placeholder {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.chat-hotkey__capture-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-hotkey__key {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(58, 109, 246, 0.12);
+  border: 1px solid rgba(58, 109, 246, 0.3);
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.chat-hotkey__progress {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.chat-hotkey__reset {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: white;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  min-width: 96px;
+  transition: all 0.2s ease;
+}
+
+.chat-hotkey__reset:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-elevated);
+}
+
+.chat-hotkey__hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.chat-hotkey__error {
+  font-size: 12px;
+  color: var(--color-error);
+}
+
+.chat-hotkey__current {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 
 /* 消息列表 */
