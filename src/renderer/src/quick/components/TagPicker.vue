@@ -200,32 +200,52 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--radius-full);
   font-size: 12px;
-  color: var(--color-text-secondary);
-  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.tag-chip:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 .tag-chip__dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
 }
 
 .tag-chip__remove {
   font-weight: 600;
   color: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+.tag-chip:hover .tag-chip__remove {
+  opacity: 1;
 }
 
 .tag-picker__trigger {
   padding: 6px 12px;
   border-radius: var(--radius-full);
-  background: var(--color-bg-elevated);
-  border: 1px dashed var(--color-border);
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   font-size: 12px;
   color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tag-picker__trigger:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--color-text);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 .tag-picker__trigger:disabled {
@@ -235,16 +255,32 @@ onBeforeUnmount(() => {
 
 .tag-picker__dropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px);
+  top: auto;
   left: 0;
   min-width: 240px;
   max-width: 340px;
   background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   padding: 10px;
-  z-index: 20;
+  z-index: 100;
+  transform-origin: bottom left;
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .tag-picker__search {

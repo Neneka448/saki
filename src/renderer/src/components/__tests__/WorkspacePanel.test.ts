@@ -30,6 +30,7 @@ const mockAssetApi = {
 
 const mockTagApi = {
     getAllUserTags: vi.fn(),
+    getAllWithUsageCount: vi.fn(),
 }
 
 vi.stubGlobal('window', {
@@ -60,6 +61,7 @@ describe('WorkspacePanel', () => {
         })
         mockCardApi.getTags.mockResolvedValue({ success: true, data: [] })
         mockTagApi.getAllUserTags.mockResolvedValue({ success: true, data: [] })
+        mockTagApi.getAllWithUsageCount.mockResolvedValue({ success: true, data: [] })
     })
 
     it('should render workspace panel', async () => {

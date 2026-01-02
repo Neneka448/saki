@@ -1,7 +1,13 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { channels } from '../../../shared/ipc/channels'
 import { appState } from '../../state/appState'
-import { hideQuickCaptureWindow, showQuickCaptureWindow } from '../../windows/quickCaptureWindow'
+import { getAppSettings } from '../../state/appSettings'
+import {
+  hideQuickCaptureWindow,
+  showQuickCaptureWindow,
+  setQuickCapturePinned,
+  isQuickCapturePinned
+} from '../../windows/quickCaptureWindow'
 import {
   getQuickCaptureShortcutInfo,
   resetQuickCaptureShortcut,
@@ -18,6 +24,11 @@ export function registerAppHandlers(): void {
     return true
   })
 
+  ipcMain.handle(channels.app.getLastProjectId, () => {
+    const settings = getAppSettings()
+    return settings.lastProjectId ?? null
+  })
+
   ipcMain.handle(channels.app.showQuickCapture, () => {
     showQuickCaptureWindow()
     return true
@@ -26,6 +37,15 @@ export function registerAppHandlers(): void {
   ipcMain.handle(channels.app.hideQuickCapture, () => {
     hideQuickCaptureWindow()
     return true
+  })
+
+  ipcMain.handle(channels.app.setQuickCapturePinned, (_event, pinned: boolean) => {
+    setQuickCapturePinned(pinned)
+    return true
+  })
+
+  ipcMain.handle(channels.app.isQuickCapturePinned, () => {
+    return isQuickCapturePinned()
   })
 
   ipcMain.handle(channels.app.getQuickCaptureShortcut, () => {

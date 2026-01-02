@@ -145,3 +145,98 @@
   font-size: 12px;
   opacity: 0.8;
 }
+
+/* 标签补全下拉框 */
+.cm-tag-completion {
+  position: fixed;
+  z-index: 1000;
+  min-width: 200px;
+  max-width: 320px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--color-border, #d8e0ee);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-md, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  backdrop-filter: blur(10px);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.cm-tag-completion-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 12px;
+  color: var(--color-text, #171c28);
+}
+
+.cm-tag-completion-item:hover,
+.cm-tag-completion-item--selected {
+  background: rgba(58, 109, 246, 0.1);
+}
+
+.cm-tag-completion-item--create {
+  color: var(--color-primary, #3a6df6);
+}
+
+.cm-tag-completion-item--create strong {
+  font-weight: 600;
+}
+
+.cm-tag-completion-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cm-tag-completion-folder {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.cm-tag-completion-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-tag-completion-path {
+  font-size: 10px;
+  color: var(--color-text-muted, #9ca3af);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.cm-tag-completion-hint {
+  font-size: 10px;
+  color: var(--color-text-muted, #9ca3af);
+  margin-left: auto;
+  background: var(--color-bg-soft, #f3f5f9);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.cm-tag-completion-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cm-tag-completion-divider {
+  height: 1px;
+  background: var(--color-border, #d8e0ee);
+  margin: 4px 0;
+}

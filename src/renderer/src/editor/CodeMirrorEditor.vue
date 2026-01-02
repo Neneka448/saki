@@ -13,9 +13,10 @@
 import { ref, onMounted, onBeforeUnmount, watch, shallowRef } from 'vue'
 import { EditorView } from '@codemirror/view'
 import { Compartment, type Extension } from '@codemirror/state'
-import type { CardListItem } from '../../../shared/ipc/types'
+import type { CardListItem, TagWithMeta } from '../../../shared/ipc/types'
 import { createEditor, setEditorContent } from './core'
 import { referenceCompletion, type ReferenceCandidate } from './extensions/referenceCompletion'
+import { tagCompletion, type TagCandidate } from './extensions/tagCompletion'
 import { livePreview } from './extensions/livePreview'
 import { imagePaste } from './extensions/imagePaste'
 
@@ -24,6 +25,7 @@ const props = defineProps<{
   placeholder?: string
   autoFocus?: boolean
   referenceCandidates?: CardListItem[]
+  tagCandidates?: TagWithMeta[]
   currentCardId?: number
   extensions?: Extension[]
 }>()
@@ -31,6 +33,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'save': []
+  'tag-insert': [tag: TagCandidate]
+  'tag-create': [tagName: string]
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
@@ -39,6 +43,7 @@ const isUploading = ref(false)
 
 // 用于动态更新候选列表的 Compartment
 const referenceCompartment = new Compartment()
+const tagCompartment = new Compartment()
 
 /**
  * 构建引用补全扩展配置
@@ -53,6 +58,23 @@ const buildReferenceExtension = () => {
   return referenceCompletion({
     candidates,
     currentCardId: props.currentCardId,
+  })
+}
+
+/**
+ * 构建标签补全扩展配置
+ */
+const buildTagExtension = () => {
+  const candidates: TagCandidate[] = (props.tagCandidates || []).map((tag) => ({
+    id: tag.id,
+    name: tag.name,
+    color: tag.color,
+  }))
+  
+  return tagCompletion({
+    candidates,
+    onInsert: (tag) => emit('tag-insert', tag),
+    onCreate: (tagName) => emit('tag-create', tagName),
   })
 }
 
@@ -95,6 +117,9 @@ onMounted(() => {
       // 引用补全（使用 Compartment 以便动态更新）
       referenceCompartment.of(buildReferenceExtension()),
 
+      // 标签补全（使用 Compartment 以便动态更新）
+      tagCompartment.of(buildTagExtension()),
+
       ...(props.extensions || []),
     ],
   })
@@ -132,6 +157,21 @@ watch(
     
     editorView.value.dispatch({
       effects: referenceCompartment.reconfigure(buildReferenceExtension()),
+    })
+  },
+  { deep: true }
+)
+
+/**
+ * 监听标签候选列表变化
+ */
+watch(
+  () => props.tagCandidates,
+  () => {
+    if (!editorView.value) return
+    
+    editorView.value.dispatch({
+      effects: tagCompartment.reconfigure(buildTagExtension()),
     })
   },
   { deep: true }

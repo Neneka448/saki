@@ -42,11 +42,14 @@ export class DrizzleCardRepository implements ICardRepository {
             .returning()
             .get()
 
+        // 默认标题为 "卡片 + ID"
+        const defaultTitle = `卡片 ${card.id}`
+
         const cardMeta = this.db
             .insert(schema.cardMetas)
             .values({
                 cardId: card.id,
-                title: input.meta?.title ?? extractTitle(input.content),
+                title: input.meta?.title ?? defaultTitle,
                 summary: input.meta?.summary ?? null,
                 wordCount: countWords(input.content),
                 extra: input.meta?.extra ?? null,
@@ -124,8 +127,9 @@ export class DrizzleCardRepository implements ICardRepository {
 
         const existingMeta = this.db.select().from(schema.cardMetas).where(eq(schema.cardMetas.cardId, id)).get()
 
+        // 更新时保留现有标题，除非明确传入新标题
         const metaValues = {
-            title: input.meta?.title ?? extractTitle(input.content),
+            title: input.meta?.title ?? existingMeta?.title ?? `卡片 ${id}`,
             summary: input.meta?.summary ?? existingMeta?.summary ?? null,
             wordCount: countWords(input.content),
             extra: input.meta?.extra ?? existingMeta?.extra ?? null,

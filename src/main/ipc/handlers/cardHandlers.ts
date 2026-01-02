@@ -139,4 +139,56 @@ export function registerCardHandlers(kernel: KernelApi): void {
     ipcMain.handle(channels.card.getByTags, (_, tagIds: number[]) => {
         return card.getCardsByTags(tagIds)
     })
+
+    // 批量更新卡片
+    ipcMain.handle(channels.card.batchUpdate, (_, params: { projectId: number; operations: any[] }) => {
+        const results: any[] = []
+        let hasChanges = false
+
+        for (const op of params.operations) {
+            const { id, content, addTags, removeTags } = op
+
+            // 更新内容
+            if (content !== undefined) {
+                const updateResult = card.update(id, content)
+                if (updateResult.success) {
+                    hasChanges = true
+                    results.push({ id, type: 'content', success: true })
+                } else {
+                    results.push({ id, type: 'content', success: false, error: updateResult.error })
+                }
+            }
+
+            // 添加标签
+            if (addTags && Array.isArray(addTags)) {
+                for (const tagId of addTags) {
+                    const tagResult = card.addTag(id, tagId)
+                    if (tagResult.success) {
+                        hasChanges = true
+                    }
+                }
+            }
+
+            // 移除标签
+            if (removeTags && Array.isArray(removeTags)) {
+                for (const tagId of removeTags) {
+                    const tagResult = card.removeTag(id, tagId)
+                    if (tagResult.success) {
+                        hasChanges = true
+                    }
+                }
+            }
+        }
+
+        if (hasChanges) {
+            broadcastCardChange({
+                type: 'batch',
+                projectId: params.projectId,
+                cardId: -1, // Batch update doesn't target a single card
+                payload: { count: results.length }
+            })
+        }
+
+        return { success: true, data: results }
+    })
 }

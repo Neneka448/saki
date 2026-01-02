@@ -16,6 +16,7 @@ import {
   type ChatSettings,
 } from '../services/chatStorage'
 import { sendChatWithTools } from '../services/chatAgent'
+import OrganizationProposal from './OrganizationProposal.vue'
 
 const emit = defineEmits<{
   'toggle-collapse': []
@@ -207,6 +208,11 @@ const toggleToolDetails = (id: string) => {
 }
 
 const isToolExpanded = (id: string) => expandedToolIds.value.has(id)
+
+const isProposal = (output: unknown) => {
+  if (!output || typeof output !== 'object') return false
+  return (output as any)._isProposal === true && (output as any).type === 'organization'
+}
 
 const formatJson = (value: unknown) => {
   if (value === undefined) return '无'
@@ -617,24 +623,33 @@ watch(() => settingsDraft.value.modelsText, () => {
         </div>
         <div class="chat-message__content">
           <div v-if="msg.kind === 'tool_call'" class="chat-tool">
-            <button class="chat-tool__summary" @click="toggleToolDetails(msg.id)">
-              工具调用：{{ msg.tool?.name || '未知工具' }}
-              <span class="chat-tool__toggle">{{ isToolExpanded(msg.id) ? '收起' : '展开' }}</span>
-            </button>
-            <div v-if="isToolExpanded(msg.id)" class="chat-tool__details">
-              <div class="chat-tool__section">
-                <span class="chat-tool__label">介绍</span>
-                <div class="chat-tool__text">{{ msg.tool?.description || '暂无介绍' }}</div>
+            <template v-if="isProposal(msg.tool?.output)">
+              <OrganizationProposal
+                :data="(msg.tool?.output as any).data"
+                :project-id="projectId || 0"
+                @confirm="(ops) => { /* 确认后可以做一些 UI 更新，比如禁用按钮，组件内部已经处理了 */ }"
+              />
+            </template>
+            <template v-else>
+              <button class="chat-tool__summary" @click="toggleToolDetails(msg.id)">
+                工具调用：{{ msg.tool?.name || '未知工具' }}
+                <span class="chat-tool__toggle">{{ isToolExpanded(msg.id) ? '收起' : '展开' }}</span>
+              </button>
+              <div v-if="isToolExpanded(msg.id)" class="chat-tool__details">
+                <div class="chat-tool__section">
+                  <span class="chat-tool__label">介绍</span>
+                  <div class="chat-tool__text">{{ msg.tool?.description || '暂无介绍' }}</div>
+                </div>
+                <div class="chat-tool__section">
+                  <span class="chat-tool__label">输入</span>
+                  <pre class="chat-tool__block">{{ formatJson(msg.tool?.input) }}</pre>
+                </div>
+                <div class="chat-tool__section">
+                  <span class="chat-tool__label">输出</span>
+                  <pre class="chat-tool__block">{{ formatJson(msg.tool?.output) }}</pre>
+                </div>
               </div>
-              <div class="chat-tool__section">
-                <span class="chat-tool__label">输入</span>
-                <pre class="chat-tool__block">{{ formatJson(msg.tool?.input) }}</pre>
-              </div>
-              <div class="chat-tool__section">
-                <span class="chat-tool__label">输出</span>
-                <pre class="chat-tool__block">{{ formatJson(msg.tool?.output) }}</pre>
-              </div>
-            </div>
+            </template>
           </div>
           <template v-else>
             {{ msg.content }}

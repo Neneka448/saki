@@ -115,6 +115,13 @@ export const cardBridge = {
     },
 
     /**
+     * 批量更新卡片
+     */
+    batchUpdate(projectId: number, operations: any[]): Promise<IpcResult<any[]>> {
+        return ipcRenderer.invoke(channels.card.batchUpdate, { projectId, operations })
+    },
+
+    /**
      * 监听卡片变更
      */
     onChanged(listener: (event: CardChangeEvent) => void) {

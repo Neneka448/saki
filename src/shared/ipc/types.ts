@@ -84,7 +84,19 @@ export interface UpdateCardMetaParams {
     meta: Partial<Omit<CardMeta, 'cardId'>>
 }
 
-export type CardChangeType = 'create' | 'update' | 'delete' | 'tag'
+export interface CardUpdateOperation {
+    id: number
+    content?: string
+    addTags?: number[]
+    removeTags?: number[]
+}
+
+export interface BatchUpdateCardParams {
+    projectId: number
+    operations: CardUpdateOperation[]
+}
+
+export type CardChangeType = 'create' | 'update' | 'delete' | 'tag' | 'batch'
 
 export interface CardChangeEvent {
     type: CardChangeType

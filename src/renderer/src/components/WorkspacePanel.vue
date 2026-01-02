@@ -3,8 +3,10 @@ import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import type { CardChangeEvent } from '../../../shared/ipc/types'
 import type { CardListItem, CardDetail, TagWithMeta, TagWithUsageCount } from '../../../shared/ipc/types'
 import { getTagDisplayInfo, sortTagsByUsage } from '../utils/tagUtils'
+import { filterCardsByTags, searchCardsFullText, type CardSearchResult } from '../utils/cardSearchUtils'
 import CardEditView from './card/CardEditView.vue'
 import MarkdownRenderer from './card/MarkdownRenderer.vue'
+import TagTree from './TagTree.vue'
 
 const props = defineProps<{
   projectId: number
@@ -23,6 +25,13 @@ const isCreating = ref(false)
 const showTagCreator = ref(false)
 const isTagSaving = ref(false)
 const newTagName = ref('')
+
+// 筛选和搜索状态
+const filterTagIds = ref<number[]>([])
+const searchQuery = ref('')
+const searchResults = ref<CardSearchResult[]>([])
+const isSearching = ref(false)
+const showFilterPanel = ref(false)
 const tagColorOptions = [
   '#3a6df6',
   '#10b981',
@@ -86,11 +95,37 @@ const tagTooltipStyle = computed(() => {
   }
 })
 
-// 加载卡片列表
+// 是否有筛选条件
+const hasFilter = computed(() => filterTagIds.value.length > 0 || searchQuery.value.trim() !== '')
+
+// 筛选标签的显示信息
+const filterTagsInfo = computed(() => {
+  return filterTagIds.value.map(id => {
+    const tag = tags.value.find(t => t.id === id)
+    return tag ? { id, name: tag.name, color: tag.color } : null
+  }).filter(Boolean)
+})
+
+// 显示的卡片列表（考虑筛选和搜索）
+const displayedCards = computed(() => {
+  if (searchQuery.value.trim()) {
+    return searchResults.value.map(r => r.card)
+  }
+  return cards.value
+})
+
+// 加载卡片列表（支持标签筛选）
 const loadCards = async () => {
   isLoading.value = true
   try {
-    const result = await window.card.getListByProject(props.projectId)
+    let result
+    if (filterTagIds.value.length > 0) {
+      // 有标签筛选
+      const filteredCards = await filterCardsByTags(props.projectId, filterTagIds.value)
+      result = { success: true, data: filteredCards }
+    } else {
+      result = await window.card.getListByProject(props.projectId)
+    }
     if (result.success) {
       cards.value = result.data
       await loadCardTagsForCards(result.data)
@@ -301,16 +336,90 @@ const saveTagEdit = async () => {
   }
 }
 
+// 搜索功能
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+const handleSearch = async () => {
+  const query = searchQuery.value.trim()
+  if (!query) {
+    searchResults.value = []
+    return
+  }
+
+  isSearching.value = true
+  try {
+    const results = await searchCardsFullText(props.projectId, query)
+    searchResults.value = results
+  } catch (e) {
+    console.error('Failed to search cards:', e)
+    searchResults.value = []
+  } finally {
+    isSearching.value = false
+  }
+}
+
+const debouncedSearch = () => {
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer)
+  }
+  searchDebounceTimer = setTimeout(handleSearch, 300)
+}
+
+const clearSearch = () => {
+  searchQuery.value = ''
+  searchResults.value = []
+}
+
+// 标签筛选功能
+const toggleFilterTag = (tagId: number) => {
+  const next = [...filterTagIds.value]
+  const index = next.indexOf(tagId)
+  if (index >= 0) {
+    next.splice(index, 1)
+  } else {
+    next.push(tagId)
+  }
+  filterTagIds.value = next
+  loadCards()
+}
+
+const removeFilterTag = (tagId: number) => {
+  filterTagIds.value = filterTagIds.value.filter(id => id !== tagId)
+  loadCards()
+}
+
+const clearFilters = () => {
+  filterTagIds.value = []
+  searchQuery.value = ''
+  searchResults.value = []
+  loadCards()
+}
+
+const toggleFilterPanel = () => {
+  showFilterPanel.value = !showFilterPanel.value
+}
+
+// 从标签视图快速筛选卡片（切换到时间流并添加筛选）
+const filterByTag = (tag: TagWithUsageCount) => {
+  filterTagIds.value = [tag.id]
+  activeTab.value = 'timeline'
+  loadCards()
+}
+
 // 监听 projectId 变化重新加载
 watch(() => props.projectId, () => {
   selectedCardId.value = null
   isCreating.value = false
   clearSelectedTag()
+  clearFilters()
   loadCards()
   if (isTagView.value) {
     loadTags()
   }
 })
+
+// 监听搜索输入
+watch(searchQuery, debouncedSearch)
 
 // 创建新卡片
 const createCard = () => {
@@ -442,19 +551,16 @@ let removeCardListener: (() => void) | null = null
 
 onMounted(() => {
   loadCards()
+  loadTags() // 始终加载标签，用于筛选面板
   removeCardListener = window.card?.onChanged?.((event: CardChangeEvent) => {
     if (!event || event.projectId !== props.projectId) return
     if (event.type === 'tag') {
       loadCardTagsForCard(event.cardId)
-      if (isTagView.value) {
-        loadTags()
-      }
+      loadTags()
       return
     }
     loadCards()
-    if (isTagView.value) {
-      loadTags()
-    }
+    loadTags()
   }) || null
 })
 
@@ -504,6 +610,17 @@ watch(tagEditColor, () => {
           </button>
         </div>
         <div class="workspace-header__actions">
+          <button 
+            v-if="!isTagView"
+            class="workspace-header__icon-btn"
+            :class="{ 'workspace-header__icon-btn--active': showFilterPanel }"
+            title="筛选"
+            @click="toggleFilterPanel"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+          </button>
           <button class="workspace-header__btn" @click="handlePrimaryAction">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 5v14M5 12h14" />
@@ -516,26 +633,105 @@ watch(tagEditColor, () => {
       <!-- 内容区 -->
       <div class="workspace-content">
         <template v-if="!isTagView">
+          <!-- 搜索和筛选栏 -->
+          <div v-if="showFilterPanel" class="workspace-filter">
+            <!-- 搜索框 -->
+            <div class="workspace-filter__search">
+              <svg class="workspace-filter__search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+              <input
+                v-model="searchQuery"
+                class="workspace-filter__search-input"
+                type="text"
+                placeholder="搜索卡片内容..."
+              />
+              <button
+                v-if="searchQuery"
+                class="workspace-filter__search-clear"
+                @click="clearSearch"
+              >
+                ×
+              </button>
+            </div>
+
+            <!-- 标签筛选 -->
+            <div class="workspace-filter__tags">
+              <span class="workspace-filter__label">按标签筛选：</span>
+              <div class="workspace-filter__tag-list">
+                <button
+                  v-for="tag in displayedTags"
+                  :key="tag.id"
+                  class="workspace-filter__tag"
+                  :class="{ 'workspace-filter__tag--active': filterTagIds.includes(tag.id) }"
+                  :style="filterTagIds.includes(tag.id) ? { borderColor: tag.color || 'var(--color-primary)' } : {}"
+                  @click="toggleFilterTag(tag.id)"
+                >
+                  <span
+                    class="workspace-filter__tag-dot"
+                    :style="{ background: tag.color || 'var(--color-text-muted)' }"
+                  ></span>
+                  {{ tag.name }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 当前筛选条件展示 -->
+          <div v-if="hasFilter" class="workspace-filter-bar">
+            <div class="workspace-filter-bar__items">
+              <span v-if="searchQuery" class="workspace-filter-bar__item workspace-filter-bar__item--search">
+                🔍 "{{ searchQuery }}"
+                <button class="workspace-filter-bar__remove" @click="clearSearch">×</button>
+              </span>
+              <span
+                v-for="tag in filterTagsInfo"
+                :key="tag.id"
+                class="workspace-filter-bar__item"
+                :style="{ borderColor: tag.color || 'var(--color-primary)' }"
+              >
+                <span
+                  class="workspace-filter-bar__dot"
+                  :style="{ background: tag.color || 'var(--color-text-muted)' }"
+                ></span>
+                {{ tag.name }}
+                <button class="workspace-filter-bar__remove" @click="removeFilterTag(tag.id)">×</button>
+              </span>
+            </div>
+            <button class="workspace-filter-bar__clear" @click="clearFilters">清除筛选</button>
+          </div>
+
           <!-- 加载状态 -->
-          <div v-if="isLoading" class="workspace-loading">
+          <div v-if="isLoading || isSearching" class="workspace-loading">
             <div class="workspace-loading__spinner"></div>
-            <span>加载中...</span>
+            <span>{{ isSearching ? '搜索中...' : '加载中...' }}</span>
           </div>
 
           <!-- 空状态 -->
-          <div v-else-if="cards.length === 0" class="workspace-empty">
-            <div class="workspace-empty__icon">📝</div>
-            <h3 class="workspace-empty__title">还没有卡片</h3>
-            <p class="workspace-empty__text">点击"新建"开始记录</p>
-            <button class="workspace-empty__btn" @click="createCard">
-              创建第一张卡片
-            </button>
+          <div v-else-if="displayedCards.length === 0" class="workspace-empty">
+            <template v-if="hasFilter">
+              <div class="workspace-empty__icon">🔍</div>
+              <h3 class="workspace-empty__title">未找到匹配的卡片</h3>
+              <p class="workspace-empty__text">尝试调整筛选条件</p>
+              <button class="workspace-empty__btn" @click="clearFilters">
+                清除筛选
+              </button>
+            </template>
+            <template v-else>
+              <div class="workspace-empty__icon">📝</div>
+              <h3 class="workspace-empty__title">还没有卡片</h3>
+              <p class="workspace-empty__text">点击"新建"开始记录</p>
+              <button class="workspace-empty__btn" @click="createCard">
+                创建第一张卡片
+              </button>
+            </template>
           </div>
 
           <!-- 卡片列表 -->
           <div v-else class="workspace-cards">
             <div
-              v-for="card in cards"
+              v-for="card in displayedCards"
               :key="card.id"
               :class="['card-item', { 'card-item--selected': card.id === selectedCardId }]"
               @click="selectCard(card.id)"
@@ -619,22 +815,13 @@ watch(tagEditColor, () => {
               </button>
             </div>
 
-            <div v-else class="tag-list">
-              <div
-                v-for="tag in displayedTags"
-                :key="tag.id"
-                class="tag-item"
-                :class="{ 'tag-item--selected': tag.id === selectedTagId }"
-                @click="selectTag(tag)"
-              >
-                <span
-                  class="tag-item__dot"
-                  :style="{ background: tag.color || 'var(--color-text-muted)' }"
-                ></span>
-                <span class="tag-item__name">{{ tag.name }}</span>
-                <span class="tag-item__count">{{ tag.usageCount }}</span>
-              </div>
-            </div>
+            <TagTree
+              v-else
+              :tags="displayedTags"
+              :selected-tag-id="selectedTagId"
+              @select="selectTag"
+              @filter="filterByTag"
+            />
           </div>
         </template>
       </div>
@@ -1378,6 +1565,217 @@ watch(tagEditColor, () => {
 .tag-card__tooltip-content {
   max-height: 240px;
   overflow-y: auto;
+}
+
+/* 筛选面板样式 */
+.workspace-filter {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workspace-filter__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: white;
+  transition: all 0.2s;
+}
+
+.workspace-filter__search:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(58, 109, 246, 0.1);
+}
+
+.workspace-filter__search-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.workspace-filter__search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-text);
+  outline: none;
+}
+
+.workspace-filter__search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.workspace-filter__search-clear {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-bg-soft);
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspace-filter__search-clear:hover {
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+}
+
+.workspace-filter__tags {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workspace-filter__label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.workspace-filter__tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workspace-filter__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: white;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.workspace-filter__tag:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-soft);
+}
+
+.workspace-filter__tag--active {
+  background: rgba(58, 109, 246, 0.08);
+  color: var(--color-primary);
+}
+
+.workspace-filter__tag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* 筛选条件栏 */
+.workspace-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(58, 109, 246, 0.04);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.workspace-filter-bar__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workspace-filter-bar__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  background: white;
+  border: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-text);
+}
+
+.workspace-filter-bar__item--search {
+  background: rgba(58, 109, 246, 0.08);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.workspace-filter-bar__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.workspace-filter-bar__remove {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+}
+
+.workspace-filter-bar__remove:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
+}
+
+.workspace-filter-bar__clear {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.workspace-filter-bar__clear:hover {
+  color: var(--color-primary);
+}
+
+.workspace-header__icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: white;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.workspace-header__icon-btn:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.workspace-header__icon-btn--active {
+  background: rgba(58, 109, 246, 0.08);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 @keyframes panel-rise {

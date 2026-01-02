@@ -115,6 +115,46 @@ md.renderer.rules.card_ref = (tokens, idx, _options, env) => {
   return `<span class="md-card-ref" data-ref-id="${safeRefId}" data-card-id="${ref.cardId}">${safeDisplay}</span>`
 }
 
+// 标签规则：#tagName（不以数字开头，# 后紧跟非空白字符）
+const tagPattern = /(?:^|[\s])#([^\s#\[\](){}]+)/y
+
+md.inline.ruler.before('link', 'inline_tag', (state, silent) => {
+  const pos = state.pos
+  // 检查是否在行首或前面是空白
+  if (pos > 0) {
+    const charBefore = state.src.charCodeAt(pos - 1)
+    // 空格(32)、换行(10)、回车(13)、制表符(9)
+    if (charBefore !== 32 && charBefore !== 10 && charBefore !== 13 && charBefore !== 9) {
+      return false
+    }
+  }
+  // 检查是否以 # 开头
+  if (state.src.charCodeAt(pos) !== 0x23) return false
+  // 检查 # 后面是否是空格（Markdown 标题）
+  if (state.src.charCodeAt(pos + 1) === 0x20) return false
+  // 检查是否以数字开头
+  const nextChar = state.src.charCodeAt(pos + 1)
+  if (nextChar >= 0x30 && nextChar <= 0x39) return false // 0-9
+  
+  // 匹配标签内容
+  const remaining = state.src.slice(pos + 1)
+  const match = remaining.match(/^([^\s#\[\](){}]+)/)
+  if (!match) return false
+  
+  if (!silent) {
+    const token = state.push('inline_tag', '', 0)
+    token.meta = { name: match[1] }
+  }
+  state.pos += 1 + match[1].length
+  return true
+})
+
+md.renderer.rules.inline_tag = (tokens, idx) => {
+  const meta = tokens[idx].meta as { name: string }
+  const safeName = escapeHtml(meta.name)
+  return `<span class="md-tag">#${safeName}</span>`
+}
+
 md.renderer.rules.image = (tokens, idx, options, _env, self) => {
   const token = tokens[idx]
   const classIndex = token.attrIndex('class')
@@ -449,6 +489,14 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   padding: 0 4px;
   background: rgba(58, 109, 246, 0.08);
+}
+
+.markdown-renderer :deep(.md-tag) {
+  color: var(--color-primary);
+  font-weight: 500;
+  background: linear-gradient(135deg, rgba(58, 109, 246, 0.12), rgba(17, 183, 165, 0.12));
+  border-radius: 4px;
+  padding: 1px 6px;
 }
 
 .markdown-renderer__tooltip {

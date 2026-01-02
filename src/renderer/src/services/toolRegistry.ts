@@ -232,12 +232,49 @@ const getCardTool: ToolDefinition = {
   },
 }
 
+const proposeOrganizationTool: ToolDefinition = {
+  name: 'propose_organization',
+  description: '提交卡片整理建议。当用户要求整理卡片时，分析卡片内容，生成添加/移除标签或修改内容的建议。不要直接修改，而是调用此工具。',
+  parameters: {
+    type: 'object',
+    properties: {
+      reason: { type: 'string', description: '整理的理由或概述' },
+      operations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'number', description: '卡片 ID' },
+            title: { type: 'string', description: '卡片标题（仅用于展示）' },
+            addTags: { type: 'array', items: { type: 'string' }, description: '建议添加的标签名称' },
+            removeTags: { type: 'array', items: { type: 'string' }, description: '建议移除的标签名称' },
+            content: { type: 'string', description: '建议修改后的内容（可选）' },
+          },
+          required: ['id'],
+        },
+      },
+    },
+    required: ['reason', 'operations'],
+  },
+  execute: async (input) => {
+    // 此工具不执行任何实际操作，只返回输入数据供前端渲染确认 UI
+    return {
+      output: {
+        _isProposal: true,
+        type: 'organization',
+        data: input,
+      },
+    }
+  },
+}
+
 export const toolRegistry: ToolDefinition[] = [
   getCurrentTimeTool,
   listTagsTool,
   searchCardsTool,
   listCardsTool,
   getCardTool,
+  proposeOrganizationTool,
 ]
 
 export const getToolSchemas = (): ToolSchema[] => {

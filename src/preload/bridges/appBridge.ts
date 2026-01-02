@@ -1,4 +1,4 @@
-import { ipcRenderer } from 'electron'
+import { ipcRenderer, clipboard } from 'electron'
 import { channels } from '../../shared/ipc/channels'
 
 /**
@@ -22,6 +22,12 @@ export const appBridge = {
    */
   setActiveProjectId: (projectId: number | null): Promise<boolean> => {
     return ipcRenderer.invoke(channels.app.setActiveProjectId, projectId)
+  },
+  /**
+   * 获取上次使用的项目 ID
+   */
+  getLastProjectId: (): Promise<number | null> => {
+    return ipcRenderer.invoke(channels.app.getLastProjectId)
   },
   /**
    * 监听当前项目变化
@@ -48,6 +54,18 @@ export const appBridge = {
     return ipcRenderer.invoke(channels.app.hideQuickCapture)
   },
   /**
+   * 设置快速记录窗口固定状态
+   */
+  setQuickCapturePinned: (pinned: boolean): Promise<boolean> => {
+    return ipcRenderer.invoke(channels.app.setQuickCapturePinned, pinned)
+  },
+  /**
+   * 获取快速记录窗口固定状态
+   */
+  isQuickCapturePinned: (): Promise<boolean> => {
+    return ipcRenderer.invoke(channels.app.isQuickCapturePinned)
+  },
+  /**
    * 获取快速记录快捷键
    */
   getQuickCaptureShortcut: (): Promise<{ shortcut: string; defaultShortcut: string }> => {
@@ -66,5 +84,17 @@ export const appBridge = {
    */
   resetQuickCaptureShortcut: (): Promise<{ ok: boolean; shortcut: string; defaultShortcut: string; error?: string }> => {
     return ipcRenderer.invoke(channels.app.resetQuickCaptureShortcut)
+  },
+  /**
+   * 剪贴板操作 - 读取文本
+   */
+  clipboardReadText: (): string => {
+    return clipboard.readText()
+  },
+  /**
+   * 剪贴板操作 - 写入文本
+   */
+  clipboardWriteText: (text: string): void => {
+    clipboard.writeText(text)
   },
 }

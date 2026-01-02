@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { CodeMirrorEditor } from '../../editor'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import type { CardDetail, CardListItem, TagWithMeta } from '../../../../shared/ipc/types'
 import { getTagDisplayInfo, sortTagsByName } from '../../utils/tagUtils'
 import { normalizeCardReferences, REFERENCE_NAMESPACE, REFERENCE_META_TYPE } from '../../utils/referenceUtils'
 import { syncCardReferences } from '../../services/referenceSync'
+import { syncContentTags } from '../../services/contentTagSync'
+import { extractUniqueTagNames, isValidTagName } from '../../utils/tagParseUtils'
 
 const props = defineProps<{
   cardId?: number
@@ -21,6 +23,9 @@ const emit = defineEmits<{
 
 // 状态
 const content = ref('')
+const cardTitle = ref('')
+const isEditingTitle = ref(false)
+const titleInputRef = ref<HTMLInputElement | null>(null)
 const isEditing = ref(true)
 const isLoading = ref(false)
 const isSaving = ref(false)
@@ -43,8 +48,11 @@ const isReferenceLoading = ref(false)
 const showTagPanel = ref(false)
 const lastSavedAt = ref<number | null>(null)
 const lastSavedContent = ref('')
+const lastSavedTitle = ref('')
 const autoSaveTimer = ref<number | null>(null)
 const autoSaveDelay = 800
+const tagSyncMessage = ref('')
+const tagSyncMessageTimer = ref<number | null>(null)
 
 // 是否是新建模式
 const activeCardId = computed(() => props.cardId ?? card.value?.id ?? null)
@@ -72,10 +80,26 @@ const availableTags = computed(() => {
 })
 const canAddTag = computed(() => isTaggable.value && !isTagBusy.value && selectedTagId.value !== '')
 const tagCount = computed(() => displayedCardTags.value.length)
+
+// 正文中检测到但还未关联的标签
+const detectedTagsInContent = computed(() => {
+  const tagNames = extractUniqueTagNames(content.value)
+  const currentTagNames = new Set(cardTags.value.map(t => t.name))
+  return tagNames.filter(name => isValidTagName(name) && !currentTagNames.has(name))
+})
+
+// 显示标题：优先用编辑中的标题，否则用卡片标题或默认值
+const displayTitle = computed(() => {
+  if (isNew.value) return '新卡片'
+  return cardTitle.value || card.value?.title || `卡片 ${activeCardId.value}`
+})
+
 const hasUnsavedChanges = computed(() => {
   const trimmed = content.value.trim()
   if (!trimmed) return false
-  return content.value !== lastSavedContent.value
+  const contentChanged = content.value !== lastSavedContent.value
+  const titleChanged = cardTitle.value !== lastSavedTitle.value
+  return contentChanged || titleChanged
 })
 const saveStatusText = computed(() => {
   if (isSaving.value) return '保存中...'
@@ -93,9 +117,47 @@ const saveStatusText = computed(() => {
   return hasUnsavedChanges.value ? '未保存' : '—'
 })
 
+// 开始编辑标题
+const startEditTitle = () => {
+  if (isNew.value) return
+  isEditingTitle.value = true
+  nextTick(() => {
+    titleInputRef.value?.focus()
+    titleInputRef.value?.select()
+  })
+}
+
+// 完成标题编辑
+const finishEditTitle = () => {
+  isEditingTitle.value = false
+  // 如果标题改变了，触发自动保存
+  if (cardTitle.value !== lastSavedTitle.value) {
+    scheduleAutoSave()
+  }
+}
+
+// 取消标题编辑
+const cancelEditTitle = () => {
+  cardTitle.value = lastSavedTitle.value
+  isEditingTitle.value = false
+}
+
+// 处理标题输入框按键
+const handleTitleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Enter') {
+    finishEditTitle()
+  } else if (e.key === 'Escape') {
+    cancelEditTitle()
+  }
+}
+
 const toggleTagPanel = () => {
   showTagPanel.value = !showTagPanel.value
-  if (!showTagPanel.value) {
+  if (showTagPanel.value) {
+    // 打开标签面板时刷新标签列表
+    loadCardTags()
+    loadAllTags()
+  } else {
     showTagDropdown.value = false
   }
 }
@@ -115,7 +177,9 @@ const loadCard = async () => {
     if (result.success) {
       card.value = result.data
       content.value = result.data.content
+      cardTitle.value = result.data.title || `卡片 ${result.data.id}`
       lastSavedContent.value = result.data.content
+      lastSavedTitle.value = cardTitle.value
       lastSavedAt.value = new Date(result.data.updatedAt).getTime()
     }
   } catch (e) {
@@ -312,6 +376,30 @@ const handleOutsideClick = (event: MouseEvent) => {
   showTagDropdown.value = false
 }
 
+// 处理编辑器中创建新标签
+const handleTagCreate = async (tagName: string) => {
+  try {
+    const result = await window.tag.getOrCreate(props.projectId, tagName)
+    if (result.success) {
+      await loadAllTags()
+    }
+  } catch (e) {
+    console.error('Failed to create tag:', e)
+  }
+}
+
+// 显示标签同步提示
+const showTagSyncMessage = (message: string) => {
+  if (tagSyncMessageTimer.value) {
+    clearTimeout(tagSyncMessageTimer.value)
+  }
+  tagSyncMessage.value = message
+  tagSyncMessageTimer.value = window.setTimeout(() => {
+    tagSyncMessage.value = ''
+    tagSyncMessageTimer.value = null
+  }, 3000)
+}
+
 // 保存卡片
 const saveCard = async () => {
   if (!content.value.trim()) return
@@ -330,7 +418,11 @@ const saveCard = async () => {
     return
   }
 
-  if (normalizedContent === lastSavedContent.value) return
+  // 检查是否只有标题变化，没有内容变化
+  const contentChanged = normalizedContent !== lastSavedContent.value
+  const titleChanged = cardTitle.value !== lastSavedTitle.value
+  
+  if (!contentChanged && !titleChanged) return
 
   if (autoSaveTimer.value) {
     window.clearTimeout(autoSaveTimer.value)
@@ -347,18 +439,33 @@ const saveCard = async () => {
       // 更新卡片
       const cardId = activeCardId.value
       if (!cardId) return
-      result = await window.card.update({ id: cardId, content: normalizedContent })
+      result = await window.card.update({ 
+        id: cardId, 
+        content: normalizedContent,
+        meta: { title: cardTitle.value }
+      })
     }
 
     if (result.success) {
       card.value = result.data
+      cardTitle.value = result.data.title || `卡片 ${result.data.id}`
       emit('saved', result.data)
       lastSavedContent.value = normalizedContent
+      lastSavedTitle.value = cardTitle.value
       const updatedAt = new Date(result.data.updatedAt).getTime()
       lastSavedAt.value = Number.isNaN(updatedAt) ? Date.now() : updatedAt
 
       await syncCardReferences(result.data.id, props.projectId, normalizedContent)
+      const tagSyncResult = await syncContentTags(result.data.id, props.projectId, normalizedContent)
+      
+      // 显示标签同步提示
+      if (tagSyncResult.addedTags.length > 0) {
+        showTagSyncMessage(`已关联标签：${tagSyncResult.addedTags.map(t => '#' + t).join(' ')}`)
+        emit('tags-updated', result.data.id)
+      }
+      
       await loadCardTags()
+      await loadAllTags()
     }
   } catch (e) {
     console.error('Failed to save card:', e)
@@ -405,7 +512,9 @@ watch(() => props.cardId, () => {
   } else {
     card.value = null
     content.value = ''
+    cardTitle.value = ''
     isEditing.value = true
+    isEditingTitle.value = false
     cardTags.value = []
     referenceTags.value = []
     referenceMap.value = {}
@@ -413,6 +522,7 @@ watch(() => props.cardId, () => {
     tagError.value = ''
     showTagDropdown.value = false
     lastSavedContent.value = ''
+    lastSavedTitle.value = ''
     lastSavedAt.value = null
     loadReferenceCandidates()
   }
@@ -453,8 +563,26 @@ onBeforeUnmount(() => {
     <!-- 工具栏 -->
     <div class="card-edit-view__toolbar">
       <div class="card-edit-view__title">
-        <span class="card-edit-view__title-text">
-          {{ isNew ? '新建卡片' : (card?.title || '编辑卡片') }}
+        <!-- 标题编辑模式 -->
+        <input
+          v-if="isEditingTitle"
+          ref="titleInputRef"
+          v-model="cardTitle"
+          class="card-edit-view__title-input"
+          type="text"
+          placeholder="输入标题..."
+          @blur="finishEditTitle"
+          @keydown="handleTitleKeydown"
+        />
+        <!-- 标题显示模式 -->
+        <span
+          v-else
+          class="card-edit-view__title-text"
+          :class="{ 'card-edit-view__title-text--editable': !isNew }"
+          :title="isNew ? '' : '点击编辑标题'"
+          @click="startEditTitle"
+        >
+          {{ displayTitle }}
         </span>
         <span
           class="card-edit-view__status"
@@ -495,6 +623,13 @@ onBeforeUnmount(() => {
     <div v-if="saveError" class="card-edit-view__error">
       {{ saveError }}
     </div>
+
+    <!-- 标签同步提示 -->
+    <transition name="tag-sync-toast">
+      <div v-if="tagSyncMessage" class="card-edit-view__tag-toast">
+        {{ tagSyncMessage }}
+      </div>
+    </transition>
     
     <!-- 加载状态 -->
     <div v-if="isLoading" class="card-edit-view__loading">
@@ -509,8 +644,10 @@ onBeforeUnmount(() => {
         v-model="content"
         :auto-focus="true"
         :reference-candidates="referenceCandidates"
+        :tag-candidates="allTags"
         :current-card-id="activeCardId || undefined"
         @save="saveCard"
+        @tag-create="handleTagCreate"
       />
       
       <!-- 预览模式 -->
@@ -529,92 +666,110 @@ onBeforeUnmount(() => {
         class="card-edit-view__tag-panel"
       >
         <div class="card-edit-view__tag-panel-header">
-          <div class="card-edit-view__tag-panel-title">标签</div>
+          <div class="card-edit-view__tag-panel-title">标签管理</div>
           <button class="card-edit-view__tag-panel-close" @click="closeTagPanel">×</button>
         </div>
-        <div class="card-edit-view__tags card-edit-view__tags--panel">
-          <div class="card-edit-view__tags-header">
-            <span class="card-edit-view__tags-title">当前标签</span>
-            <span v-if="!isTaggable" class="card-edit-view__tags-hint">保存后可添加</span>
-            <span v-else class="card-edit-view__tags-hint">去标签页新建</span>
-          </div>
-          <div class="card-edit-view__tag-list">
-            <div
-              v-for="tag in displayedCardTags"
-              :key="tag.id"
-              class="card-edit-view__tag-item"
-              :style="getTagStyle(tag)"
-            >
-              <span class="card-edit-view__tag-name">{{ tag.name }}</span>
-              <button
-                class="card-edit-view__tag-remove"
-                :disabled="isTagBusy"
-                @click.stop="removeTag(tag)"
-              >
-                ×
-              </button>
+        
+        <div class="card-edit-view__tag-panel-body">
+          <!-- 当前标签 -->
+          <section class="card-edit-view__tag-section">
+            <div class="card-edit-view__tag-section-header">
+              <span class="card-edit-view__tag-section-title">已关联</span>
+              <span class="card-edit-view__tag-section-count">{{ displayedCardTags.length }}</span>
             </div>
-            <span v-if="displayedCardTags.length === 0 && !isCardTagLoading" class="card-edit-view__tags-empty">
-              暂无标签
-            </span>
-            <span v-if="isCardTagLoading" class="card-edit-view__tags-loading">标签加载中...</span>
-          </div>
-
-          <div class="card-edit-view__tag-input">
-            <div class="card-edit-view__tag-select-wrap">
-              <button
-                ref="tagSelectRef"
-                class="card-edit-view__tag-select"
-                :class="{ 'card-edit-view__tag-select--open': showTagDropdown }"
-                :style="selectedTagStyle"
-                :disabled="!isTaggable || isTagBusy || availableTags.length === 0"
-                @click="toggleTagDropdown"
-              >
-                <span v-if="selectedTag" class="card-edit-view__tag-select-label">
-                  <span
-                    class="card-edit-view__tag-select-dot"
-                    :style="{ background: selectedTag.color || 'var(--color-text-muted)' }"
-                  ></span>
-                  {{ selectedTag.name }}
-                </span>
-                <span v-else class="card-edit-view__tag-select-placeholder">选择标签</span>
-                <span class="card-edit-view__tag-select-arrow"></span>
-              </button>
+            <div class="card-edit-view__tag-chips">
               <div
-                v-if="showTagDropdown"
-                ref="tagDropdownRef"
-                class="card-edit-view__tag-dropdown"
+                v-for="tag in displayedCardTags"
+                :key="tag.id"
+                class="card-edit-view__tag-chip"
+                :style="getTagStyle(tag)"
               >
+                <span class="card-edit-view__tag-chip-name">{{ tag.name }}</span>
                 <button
-                  v-for="tag in availableTags"
-                  :key="tag.id"
-                  class="card-edit-view__tag-option"
-                  @click="selectTag(tag)"
-                >
-                  <span
-                    class="card-edit-view__tag-option-dot"
-                    :style="{ background: tag.color || 'var(--color-text-muted)' }"
-                  ></span>
-                  <span class="card-edit-view__tag-option-name">{{ tag.name }}</span>
-                </button>
+                  class="card-edit-view__tag-chip-remove"
+                  :disabled="isTagBusy"
+                  @click.stop="removeTag(tag)"
+                >×</button>
               </div>
+              <span v-if="displayedCardTags.length === 0 && !isCardTagLoading" class="card-edit-view__tag-empty">
+                暂无标签
+              </span>
             </div>
-            <button
-              class="card-edit-view__tag-input-btn"
-              :disabled="!canAddTag"
-              @click="addSelectedTag"
-            >
-              添加
-            </button>
-          </div>
+          </section>
 
-          <div v-if="tagError" class="card-edit-view__tag-error">{{ tagError }}</div>
-          <div
-            v-if="isTaggable && availableTags.length === 0 && !isAllTagLoading"
-            class="card-edit-view__tag-empty-hint"
-          >
-            没有可添加的标签，去标签页新建
-          </div>
+          <!-- 正文中检测到的标签 -->
+          <section v-if="detectedTagsInContent.length > 0" class="card-edit-view__tag-section">
+            <div class="card-edit-view__tag-section-header">
+              <span class="card-edit-view__tag-section-title">正文中检测到</span>
+              <span class="card-edit-view__tag-section-hint">保存后自动关联</span>
+            </div>
+            <div class="card-edit-view__tag-chips card-edit-view__tag-chips--detected">
+              <span
+                v-for="tagName in detectedTagsInContent"
+                :key="tagName"
+                class="card-edit-view__tag-chip card-edit-view__tag-chip--detected"
+              >
+                #{{ tagName }}
+              </span>
+            </div>
+          </section>
+
+          <!-- 添加标签 -->
+          <section class="card-edit-view__tag-section">
+            <div class="card-edit-view__tag-section-header">
+              <span class="card-edit-view__tag-section-title">添加标签</span>
+            </div>
+            <div class="card-edit-view__tag-add">
+              <div class="card-edit-view__tag-select-wrap">
+                <button
+                  ref="tagSelectRef"
+                  class="card-edit-view__tag-select"
+                  :class="{ 'card-edit-view__tag-select--open': showTagDropdown }"
+                  :style="selectedTagStyle"
+                  :disabled="!isTaggable || isTagBusy || availableTags.length === 0"
+                  @click="toggleTagDropdown"
+                >
+                  <span v-if="selectedTag" class="card-edit-view__tag-select-label">
+                    <span
+                      class="card-edit-view__tag-select-dot"
+                      :style="{ background: selectedTag.color || 'var(--color-text-muted)' }"
+                    ></span>
+                    {{ selectedTag.name }}
+                  </span>
+                  <span v-else class="card-edit-view__tag-select-placeholder">选择标签</span>
+                  <span class="card-edit-view__tag-select-arrow"></span>
+                </button>
+                <div
+                  v-if="showTagDropdown"
+                  ref="tagDropdownRef"
+                  class="card-edit-view__tag-dropdown"
+                >
+                  <button
+                    v-for="tag in availableTags"
+                    :key="tag.id"
+                    class="card-edit-view__tag-option"
+                    @click="selectTag(tag)"
+                  >
+                    <span
+                      class="card-edit-view__tag-option-dot"
+                      :style="{ background: tag.color || 'var(--color-text-muted)' }"
+                    ></span>
+                    <span class="card-edit-view__tag-option-name">{{ tag.name }}</span>
+                  </button>
+                </div>
+              </div>
+              <button
+                class="card-edit-view__tag-add-btn"
+                :disabled="!canAddTag"
+                @click="addSelectedTag"
+              >添加</button>
+            </div>
+            <div v-if="tagError" class="card-edit-view__tag-error">{{ tagError }}</div>
+            <p v-if="!isTaggable" class="card-edit-view__tag-tip">保存卡片后可添加标签</p>
+            <p v-else-if="availableTags.length === 0 && !isAllTagLoading" class="card-edit-view__tag-tip">
+              💡 在正文中输入 <code>#标签名</code> 可快速创建标签
+            </p>
+          </section>
         </div>
       </aside>
     </transition>
@@ -675,6 +830,35 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 360px;
+}
+
+.card-edit-view__title-text--editable {
+  cursor: pointer;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.card-edit-view__title-text--editable:hover {
+  background: var(--color-bg-soft);
+}
+
+.card-edit-view__title-input {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  max-width: 360px;
+  outline: none;
+}
+
+.card-edit-view__title-input::placeholder {
+  color: var(--color-text-muted);
+  font-weight: 400;
 }
 
 .card-edit-view__status {
@@ -890,19 +1074,23 @@ onBeforeUnmount(() => {
 
 .card-edit-view__tag-select {
   width: 100%;
-  height: 30px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 28px 0 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  font-size: 12px;
-  background: var(--color-bg-elevated);
+  font-size: 11px;
+  background: var(--color-bg-soft);
   color: var(--color-text);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  transition: all 0.2s ease;
+  gap: 6px;
   cursor: pointer;
+  position: relative;
+}
+
+.card-edit-view__tag-select:hover:not(:disabled) {
+  background: white;
+  border-color: var(--color-border-strong);
 }
 
 .card-edit-view__tag-select:disabled {
@@ -912,7 +1100,6 @@ onBeforeUnmount(() => {
 
 .card-edit-view__tag-select--open {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(58, 109, 246, 0.16);
 }
 
 .card-edit-view__tag-select-label {
@@ -932,6 +1119,10 @@ onBeforeUnmount(() => {
 }
 
 .card-edit-view__tag-select-arrow {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 0;
   height: 0;
   border-left: 4px solid transparent;
@@ -941,30 +1132,33 @@ onBeforeUnmount(() => {
 
 .card-edit-view__tag-dropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: rgba(255, 255, 255, 0.95);
+  max-height: 180px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.98);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
-  padding: 6px;
+  padding: 4px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   z-index: 10;
-  backdrop-filter: blur(10px);
 }
 
 .card-edit-view__tag-option {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text);
-  transition: all 0.2s ease;
+  cursor: pointer;
+  background: transparent;
+  border: none;
   text-align: left;
   width: 100%;
 }
@@ -982,6 +1176,9 @@ onBeforeUnmount(() => {
 .card-edit-view__tag-option-name {
   flex: 1;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-edit-view__tag-input-btn {
@@ -1020,7 +1217,7 @@ onBeforeUnmount(() => {
   top: 60px;
   right: 12px;
   bottom: 12px;
-  width: var(--tag-panel-width);
+  width: 240px;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -1036,34 +1233,170 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--color-border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.8));
 }
 
 .card-edit-view__tag-panel-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--color-text);
 }
 
 .card-edit-view__tag-panel-close {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 16px;
 }
 
 .card-edit-view__tag-panel-close:hover {
-  background: white;
+  background: var(--color-bg-soft);
   color: var(--color-text);
-  border-color: var(--color-border-strong);
-  box-shadow: var(--shadow-sm);
+}
+
+.card-edit-view__tag-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.card-edit-view__tag-section {
+  padding: 8px 12px;
+}
+
+.card-edit-view__tag-section + .card-edit-view__tag-section {
+  border-top: 1px solid var(--color-border);
+}
+
+.card-edit-view__tag-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.card-edit-view__tag-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-edit-view__tag-section-count {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-soft);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.card-edit-view__tag-section-hint {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.card-edit-view__tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.card-edit-view__tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-border);
+}
+
+.card-edit-view__tag-chip-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-edit-view__tag-chip-remove {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.card-edit-view__tag-chip-remove:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.card-edit-view__tag-chip--detected {
+  background: linear-gradient(135deg, rgba(58, 109, 246, 0.1), rgba(17, 183, 165, 0.1));
+  border-color: rgba(58, 109, 246, 0.3);
+  color: var(--color-primary);
+}
+
+.card-edit-view__tag-empty {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.card-edit-view__tag-add {
+  display: flex;
+  gap: 6px;
+}
+
+.card-edit-view__tag-add-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  border: none;
+  color: white;
+  cursor: pointer;
+}
+
+.card-edit-view__tag-add-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.card-edit-view__tag-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card-edit-view__tag-tip {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
+.card-edit-view__tag-tip code {
+  background: var(--color-bg-soft);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 10px;
 }
 
 .tag-panel-slide-enter-active,
@@ -1096,5 +1429,39 @@ onBeforeUnmount(() => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* 标签同步提示 */
+.card-edit-view__tag-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, rgba(58, 109, 246, 0.95), rgba(17, 183, 165, 0.95));
+  color: white;
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+}
+
+.tag-sync-toast-enter-active {
+  transition: all 0.3s ease;
+}
+
+.tag-sync-toast-leave-active {
+  transition: all 0.3s ease;
+}
+
+.tag-sync-toast-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(20px);
+}
+
+.tag-sync-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
 }
 </style>

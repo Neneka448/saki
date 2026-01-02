@@ -8,9 +8,12 @@ export const channels = {
     ping: 'app:ping',
     getActiveProjectId: 'app:getActiveProjectId',
     setActiveProjectId: 'app:setActiveProjectId',
+    getLastProjectId: 'app:getLastProjectId',
     activeProjectChanged: 'app:activeProjectChanged',
     showQuickCapture: 'app:showQuickCapture',
     hideQuickCapture: 'app:hideQuickCapture',
+    setQuickCapturePinned: 'app:setQuickCapturePinned',
+    isQuickCapturePinned: 'app:isQuickCapturePinned',
     getQuickCaptureShortcut: 'app:getQuickCaptureShortcut',
     setQuickCaptureShortcut: 'app:setQuickCaptureShortcut',
     resetQuickCaptureShortcut: 'app:resetQuickCaptureShortcut',
@@ -45,6 +48,7 @@ export const channels = {
     // 筛选
     getByTag: 'card:getByTag',
     getByTags: 'card:getByTags',
+    batchUpdate: 'card:batchUpdate',
   },
 
   // 标签相关

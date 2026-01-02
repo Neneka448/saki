@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { keymap } from '@codemirror/view'
 import { CodeMirrorEditor } from '../editor'
 import TagPicker from './components/TagPicker.vue'
+import MarkdownRenderer from '../components/card/MarkdownRenderer.vue'
 import type { CardListItem, Project, TagWithMeta } from '../../../shared/ipc/types'
 import { normalizeCardReferences } from '../utils/referenceUtils'
 import { syncCardReferences } from '../services/referenceSync'
@@ -19,6 +20,15 @@ const isSaving = ref(false)
 const saveError = ref('')
 const loadError = ref('')
 const lastProjectId = ref<number | null>(null)
+const isPinned = ref(false)
+const isPreviewMode = ref(false)
+
+const togglePreview = () => {
+  isPreviewMode.value = !isPreviewMode.value
+  if (!isPreviewMode.value) {
+    focusEditor()
+  }
+}
 
 const isReady = computed(() => Boolean(activeProjectId.value && project.value))
 const canSave = computed(() => Boolean(isReady.value && content.value.trim() && !isSaving.value && !isLoading.value))
@@ -33,6 +43,11 @@ watch(content, () => {
     saveError.value = ''
   }
 })
+
+const togglePin = async () => {
+  isPinned.value = !isPinned.value
+  await window.app.setQuickCapturePinned(isPinned.value)
+}
 
 const focusEditor = async () => {
   await nextTick()
@@ -204,6 +219,9 @@ onMounted(async () => {
   await applyProjectId(projectId)
   await focusEditor()
 
+  // 获取固定状态
+  isPinned.value = await window.app.isQuickCapturePinned()
+
   removeListener = window.app.onActiveProjectChanged((nextId) => {
     applyProjectId(nextId)
   })
@@ -220,29 +238,83 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="quick-capture">
-    <div class="quick-capture__panel">
-      <header class="quick-capture__header">
-        <div class="quick-capture__title">
-          <span class="quick-capture__title-label">快速记录</span>
-          <span v-if="project" class="quick-capture__title-project">
-            {{ project.name }}
-          </span>
-        </div>
-        <div class="quick-capture__actions">
-          <button type="button" class="quick-capture__close" @click="requestClose">x</button>
-        </div>
-      </header>
+  <div class="quick-capture-window">
+    <!-- 拖拽区域 & 顶部状态 -->
+    <div class="window-drag-handle">
+      <div v-if="project" class="project-badge">
+        <span class="project-dot"></span>
+        {{ project.name }}
+      </div>
+      <div class="window-actions">
+        <button 
+          class="pin-btn" 
+          :class="{ 'pin-btn--active': isPinned }"
+          :title="isPinned ? '取消固定' : '固定窗口'"
+          @click="togglePin"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L12 12M12 12L8 8M12 12L16 8" :transform="isPinned ? 'rotate(180 12 12)' : ''"></path>
+            <line x1="5" y1="22" x2="19" y2="22"></line>
+          </svg>
+        </button>
+        <button class="close-btn" @click="requestClose">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
 
-      <section v-if="!activeProjectId" class="quick-capture__empty">
-        <div class="quick-capture__empty-card">
-          <span class="quick-capture__empty-title">请先在主窗口选择项目</span>
-          <span class="quick-capture__empty-desc">快速记录会自动使用主窗口当前项目</span>
-        </div>
-      </section>
+    <section v-if="!activeProjectId" class="empty-state">
+      <div class="empty-content">
+        <div class="empty-icon">📂</div>
+        <h3>选择一个项目</h3>
+        <p>请在主窗口中激活一个项目以开始记录</p>
+      </div>
+    </section>
 
-      <section v-else class="quick-capture__body">
-        <div class="quick-capture__meta">
+    <section v-else class="capture-content">
+      <!-- 预览切换按钮 -->
+      <div class="mode-switcher">
+        <button 
+          class="mode-btn" 
+          :class="{ 'mode-btn--active': !isPreviewMode }"
+          @click="isPreviewMode = false"
+        >
+          编辑
+        </button>
+        <button 
+          class="mode-btn" 
+          :class="{ 'mode-btn--active': isPreviewMode }"
+          :disabled="!content.trim()"
+          @click="isPreviewMode = true"
+        >
+          预览
+        </button>
+      </div>
+
+      <div class="editor-wrapper">
+        <!-- 编辑模式 -->
+        <CodeMirrorEditor
+          v-if="!isPreviewMode"
+          ref="editorRef"
+          v-model="content"
+          :auto-focus="true"
+          :reference-candidates="referenceCandidates"
+          :tag-candidates="allTags"
+          :extensions="editorExtensions"
+          placeholder="捕捉你的想法..."
+          @save="saveCard"
+        />
+        <!-- 预览模式 -->
+        <div v-else class="preview-wrapper">
+          <MarkdownRenderer :content="content" />
+        </div>
+      </div>
+
+      <!-- 底部工具栏 -->
+      <div class="action-bar">
+        <div class="tag-area">
           <TagPicker
             v-model="selectedTagIds"
             :tags="allTags"
@@ -250,202 +322,309 @@ onBeforeUnmount(() => {
             @create="handleCreateTag"
           />
         </div>
-
-        <div class="quick-capture__editor">
-          <CodeMirrorEditor
-            ref="editorRef"
-            v-model="content"
-            :auto-focus="true"
-            :reference-candidates="referenceCandidates"
-            :extensions="editorExtensions"
-            placeholder="写点什么... 支持 Markdown 与粘贴图片"
-            @save="saveCard"
-          />
-        </div>
-      </section>
-
-      <footer class="quick-capture__footer">
-        <div class="quick-capture__status">
-          <span v-if="loadError" class="quick-capture__status-error">{{ loadError }}</span>
-          <span v-else>{{ statusText }}</span>
-        </div>
-        <div class="quick-capture__buttons">
-          <button type="button" class="btn btn--ghost" @click="requestClose">取消</button>
-          <button
-            type="button"
-            class="btn btn--primary"
+        
+        <div class="primary-actions">
+          <span v-if="saveError" class="error-msg">{{ saveError }}</span>
+          <span v-else-if="isSaving" class="status-msg">保存中...</span>
+          
+          <button 
+            class="save-btn" 
             :disabled="!canSave"
             @click="saveCard"
           >
+            <span class="save-icon">↵</span>
             保存
           </button>
         </div>
-      </footer>
-    </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.quick-capture {
-  width: 100vw;
-  height: 100vh;
-  padding: 12px;
-}
-
-.quick-capture__panel {
+.quick-capture-window {
+  width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-lg);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.02);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  transition: all 0.2s ease;
 }
 
-.quick-capture__header {
+.window-drag-handle {
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-border);
-  background: linear-gradient(135deg, rgba(58, 109, 246, 0.12), rgba(17, 183, 165, 0.08));
+  padding: 0 16px;
   -webkit-app-region: drag;
+  z-index: 10;
 }
 
-.quick-capture__title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.quick-capture__title-label {
-  font-size: 14px;
-  font-weight: 600;
-  font-family: var(--font-display);
-}
-
-.quick-capture__title-project {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.quick-capture__actions {
+.project-badge {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.5);
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.project-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 8px var(--color-primary);
+}
+
+.window-actions {
   -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.quick-capture__close {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
+.pin-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.quick-capture__close:hover {
+.pin-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
   color: var(--color-text);
-  background: white;
 }
 
-.quick-capture__body {
+.pin-btn--active {
+  color: var(--color-primary);
+  background: rgba(58, 109, 246, 0.1);
+}
+
+.pin-btn--active:hover {
+  background: rgba(58, 109, 246, 0.15);
+  color: var(--color-primary);
+}
+
+.close-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
+}
+
+.capture-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 8px;
   overflow: hidden;
 }
 
-.quick-capture__meta {
+.mode-switcher {
   display: flex;
-  align-items: center;
+  gap: 4px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--color-border);
 }
 
-.quick-capture__editor {
-  flex: 1;
-  background: var(--color-bg-panel);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 8px;
-  overflow: hidden;
-}
-
-.quick-capture__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border);
-  background: rgba(247, 249, 253, 0.85);
-}
-
-.quick-capture__status {
+.mode-btn {
+  padding: 4px 12px;
   font-size: 12px;
-  color: var(--color-text-secondary);
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
 }
 
-.quick-capture__status-error {
-  color: var(--color-error);
+.mode-btn:hover:not(:disabled) {
+  background: var(--color-bg-soft);
+  color: var(--color-text);
 }
 
-.quick-capture__buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.btn {
-  padding: 8px 16px;
-  border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.btn--primary {
+.mode-btn--active {
   background: var(--color-primary);
   color: white;
-  box-shadow: var(--shadow-sm);
 }
 
-.btn--primary:disabled {
-  opacity: 0.6;
+.mode-btn--active:hover {
+  background: var(--color-primary);
+  color: white;
+}
+
+.mode-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.btn--ghost {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
+.editor-wrapper {
+  flex: 1;
+  padding: 0 24px;
+  overflow-y: auto;
+  /* 隐藏滚动条但保持功能 */
+  scrollbar-width: none;
 }
 
-.quick-capture__empty {
+.editor-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.preview-wrapper {
+  padding: 16px 0;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+/* 深度选择器修改 CodeMirror 样式 */
+:deep(.cm-editor) {
+  height: 100%;
+  background: transparent !important;
+}
+
+:deep(.cm-scroller) {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+:deep(.cm-content) {
+  padding: 12px 0;
+  max-width: 100%;
+}
+
+:deep(.cm-line) {
+  padding: 0 !important;
+}
+
+:deep(.cm-activeLine), :deep(.cm-activeLineGutter) {
+  background: transparent !important;
+}
+
+:deep(.cm-focused) {
+  outline: none !important;
+}
+
+.action-bar {
+  padding: 16px 24px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: linear-gradient(to top, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 100%);
+}
+
+.tag-area {
+  flex: 1;
+  min-width: 0;
+}
+
+.primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-msg, .error-msg {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-msg { color: var(--color-text-muted); }
+.error-msg { color: var(--color-error); }
+
+.save-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--color-text);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.save-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.save-icon {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.empty-state {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  color: var(--color-text-muted);
 }
 
-.quick-capture__empty-card {
-  padding: 20px 24px;
-  border-radius: var(--radius-md);
-  border: 1px dashed var(--color-border);
-  background: rgba(255, 255, 255, 0.7);
+.empty-content {
   text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
-.quick-capture__empty-title {
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-content h3 {
+  font-size: 16px;
   font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 8px;
 }
 
-.quick-capture__empty-desc {
-  font-size: 12px;
-  color: var(--color-text-secondary);
+.empty-content p {
+  font-size: 13px;
 }
 </style>

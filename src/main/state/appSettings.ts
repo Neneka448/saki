@@ -6,10 +6,12 @@ export const DEFAULT_QUICK_CAPTURE_SHORTCUT = 'CommandOrControl+Shift+N'
 
 export interface AppSettings {
   quickCaptureShortcut: string
+  lastProjectId: number | null
 }
 
 let cachedSettings: AppSettings = {
   quickCaptureShortcut: DEFAULT_QUICK_CAPTURE_SHORTCUT,
+  lastProjectId: null,
 }
 
 const getSettingsPath = () => {

@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, screen, app } from 'electron'
 import path from 'path'
 import { getRendererUrl } from './rendererUrl'
 
@@ -39,7 +39,6 @@ export const createQuickCaptureWindow = () => {
     alwaysOnTop: true,
     skipTaskbar: true,
     fullscreenable: false,
-    autoHideMenuBar: true,
     backgroundColor: '#f7f9fd',
     webPreferences: {
       preload: path.join(__dirname, '..', '..', 'preload', 'index.js'),
@@ -58,7 +57,7 @@ export const createQuickCaptureWindow = () => {
   }
 
   window.on('blur', () => {
-    if (!window.isDestroyed()) {
+    if (!window.isDestroyed() && !isPinned) {
       window.close()
     }
   })
@@ -66,12 +65,22 @@ export const createQuickCaptureWindow = () => {
   window.on('closed', () => {
     if (quickCaptureWindow === window) {
       quickCaptureWindow = null
+      // 不重置 isPinned，保持用户的选择
     }
   })
 
   quickCaptureWindow = window
   return window
 }
+
+// 窗口固定状态（默认置顶）
+let isPinned = true
+
+export const setQuickCapturePinned = (pinned: boolean) => {
+  isPinned = pinned
+}
+
+export const isQuickCapturePinned = () => isPinned
 
 export const showQuickCaptureWindow = () => {
   const window = createQuickCaptureWindow()
@@ -86,6 +95,10 @@ export const showQuickCaptureWindow = () => {
 export const hideQuickCaptureWindow = () => {
   if (!quickCaptureWindow || quickCaptureWindow.isDestroyed()) return
   quickCaptureWindow.close()
+  // 不重置 isPinned，保持用户的选择
+  if (process.platform === 'darwin') {
+    app.hide()
+  }
 }
 
 export const getQuickCaptureWindow = () => quickCaptureWindow

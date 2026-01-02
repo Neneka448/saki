@@ -7,6 +7,7 @@ import type { Project } from '../../shared/ipc/types'
 
 // 当前选中的项目
 const currentProject = ref<Project | null>(null)
+const isInitializing = ref(true)
 const isChatCollapsed = ref(false)
 const chatWidth = ref(320)
 const isResizing = ref(false)
@@ -72,17 +73,39 @@ const stopResize = () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 恢复聊天宽度
   const stored = Number(localStorage.getItem('saki.chat.width'))
   if (!Number.isNaN(stored) && stored > 0) {
     applyChatWidth(stored)
+  }
+  
+  // 尝试恢复上次打开的项目
+  try {
+    const lastProjectId = await window.app?.getLastProjectId?.()
+    if (lastProjectId) {
+      const result = await window.project?.getById?.(lastProjectId)
+      if (result?.success && result.data) {
+        currentProject.value = result.data
+        window.app?.setActiveProjectId?.(result.data.id)
+      }
+    }
+  } catch (e) {
+    console.error('Failed to restore last project:', e)
+  } finally {
+    isInitializing.value = false
   }
 })
 </script>
 
 <template>
+  <!-- 初始化加载中 -->
+  <div v-if="isInitializing" class="app-loading">
+    <div class="app-loading__spinner"></div>
+  </div>
+  
   <!-- 未选择项目时显示项目选择器 -->
-  <ProjectSelector v-if="!currentProject" @select="selectProject" />
+  <ProjectSelector v-else-if="!currentProject" @select="selectProject" />
   
   <!-- 选择项目后显示主界面 -->
   <div v-else class="app-layout" :style="{ '--chat-width': `${chatWidth}px` }">
@@ -163,5 +186,29 @@ onMounted(() => {
 .chat-collapsed__btn:hover {
   background: white;
   color: var(--color-text);
+}
+
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background: var(--color-bg);
+}
+
+.app-loading__spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

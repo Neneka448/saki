@@ -15,7 +15,9 @@ export interface ReferenceParseResult {
 }
 
 const REF_COMMENT_PATTERN = /<!--ref:([a-zA-Z0-9_-]+)-->/g
-const REF_REGEX = /\[\[([^\]]+)\]\]\(([^)]*)\)(?:<!--ref:([a-zA-Z0-9_-]+)-->)?/g
+// 匹配卡片引用，但排除图片语法 [[!image]...]
+// 卡片引用格式: [[标题]](显示文本)<!--ref:id-->
+const REF_REGEX = /\[\[(?!!(?:image|img))([^\]]+)\]\]\(([^)]*)\)(?:<!--ref:([a-zA-Z0-9_-]+)-->)?/g
 
 /**
  * 生成唯一的引用 ID
@@ -35,10 +37,39 @@ export const assertReferenceInvariant = (content: string): void => {
 }
 
 /**
+ * 获取内容中所有代码区域的范围（代码块和行内代码）
+ */
+const getCodeRanges = (content: string): Array<{ start: number; end: number }> => {
+    const ranges: Array<{ start: number; end: number }> = []
+
+    // 匹配围栏代码块 ```...```
+    const fencePattern = /```[\s\S]*?```/g
+    let match
+    while ((match = fencePattern.exec(content)) !== null) {
+        ranges.push({ start: match.index, end: match.index + match[0].length })
+    }
+
+    // 匹配行内代码 `...`（但不匹配 ```）
+    const inlinePattern = /(?<!`)`(?!``)[^`\n]+`(?!`)/g
+    while ((match = inlinePattern.exec(content)) !== null) {
+        ranges.push({ start: match.index, end: match.index + match[0].length })
+    }
+
+    return ranges
+}
+
+/**
+ * 检查位置是否在代码区域内
+ */
+const isInCodeRange = (pos: number, ranges: Array<{ start: number; end: number }>): boolean => {
+    return ranges.some(r => pos >= r.start && pos < r.end)
+}
+
+/**
  * 解析并规范化内容中的卡片引用
  * - 为缺少 refId 的引用自动生成 ID（当 allowInsert=true）
  * - 检测孤立的 ref 注释
- * @throws 如果存在孤立的 ref 注释，或 allowInsert=false 时存在缺少 refId 的引用
+ * - 跳过代码块内的内容
  */
 export const normalizeCardReferences = (
     content: string,
@@ -46,8 +77,14 @@ export const normalizeCardReferences = (
 ): ReferenceParseResult => {
     const allowInsert = options.allowInsert !== false
     const references: CardReferenceToken[] = []
+    const codeRanges = getCodeRanges(content)
 
     const replaced = content.replace(REF_REGEX, (match, title, placeholder, refId, offset) => {
+        // 跳过代码区域内的引用
+        if (isInCodeRange(offset, codeRanges)) {
+            return match
+        }
+
         const cleanTitle = String(title || '').trim()
         const cleanPlaceholder = String(placeholder || '')
         let resolvedRefId = typeof refId === 'string' && refId.length > 0 ? refId : ''
@@ -71,9 +108,32 @@ export const normalizeCardReferences = (
     })
 
     // 检测孤立的 ref 注释（不属于任何引用的注释）
+    // 只记录警告，不阻止保存
     const allRefComments = replaced.match(REF_COMMENT_PATTERN)
     if (allRefComments && allRefComments.length > references.length) {
-        throw new Error('Orphan ref comment detected')
+        console.warn('Orphan ref comment detected, will be cleaned up')
+        // 清理孤立的 ref 注释（但跳过代码块内的）
+        const validRefIds = new Set(references.map(r => r.refId))
+        let cleanedContent = ''
+        let lastIndex = 0
+
+        REF_COMMENT_PATTERN.lastIndex = 0
+        let commentMatch
+        while ((commentMatch = REF_COMMENT_PATTERN.exec(replaced)) !== null) {
+            const refId = commentMatch[1]
+            const pos = commentMatch.index
+
+            // 保留代码块内的注释或有效的引用注释
+            if (isInCodeRange(pos, codeRanges) || validRefIds.has(refId)) {
+                cleanedContent += replaced.slice(lastIndex, pos + commentMatch[0].length)
+            } else {
+                cleanedContent += replaced.slice(lastIndex, pos)
+            }
+            lastIndex = pos + commentMatch[0].length
+        }
+        cleanedContent += replaced.slice(lastIndex)
+
+        return { content: cleanedContent, references }
     }
 
     return { content: replaced, references }

@@ -39,6 +39,76 @@ const saveKeymap = (onSave?: () => void) => keymap.of([
 ])
 
 /**
+ * 剪贴板操作 keymap（用于无框架窗口）
+ * 通过 Electron 的 clipboard API 实现
+ */
+const clipboardKeymap = keymap.of([
+  {
+    key: 'Mod-v',
+    run: (view) => {
+      // 尝试使用 Electron clipboard API
+      if (typeof window !== 'undefined' && (window as any).app?.clipboardReadText) {
+        try {
+          const text = (window as any).app.clipboardReadText()
+          if (text) {
+            const { from, to } = view.state.selection.main
+            view.dispatch({
+              changes: { from, to, insert: text },
+              selection: { anchor: from + text.length },
+            })
+            return true
+          }
+        } catch (e) {
+          console.error('Clipboard read failed:', e)
+        }
+      }
+      // 回退到默认行为
+      return false
+    },
+  },
+  {
+    key: 'Mod-c',
+    run: (view) => {
+      if (typeof window !== 'undefined' && (window as any).app?.clipboardWriteText) {
+        try {
+          const { from, to } = view.state.selection.main
+          if (from !== to) {
+            const text = view.state.sliceDoc(from, to)
+              ; (window as any).app.clipboardWriteText(text)
+            return true
+          }
+        } catch (e) {
+          console.error('Clipboard write failed:', e)
+        }
+      }
+      return false
+    },
+  },
+  {
+    key: 'Mod-x',
+    run: (view) => {
+      if (typeof window !== 'undefined' && (window as any).app?.clipboardWriteText) {
+        try {
+          const { from, to } = view.state.selection.main
+          if (from !== to) {
+            const text = view.state.sliceDoc(from, to)
+              ; (window as any).app.clipboardWriteText(text)
+            view.dispatch({
+              changes: { from, to, insert: '' },
+              selection: { anchor: from },
+            })
+            return true
+          }
+        } catch (e) {
+          console.error('Clipboard cut failed:', e)
+        }
+      }
+      return false
+    },
+  },
+])
+
+/**
  * 创建内容变化监听器
  */
 const createUpdateListener = (onChange?: (content: string) => void) => {
@@ -69,6 +139,9 @@ export function createEditor(
     // 历史记录（撤销/重做）
     history(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
+
+    // 剪贴板操作（用于无框架窗口）
+    clipboardKeymap,
 
     // Markdown 语法高亮
     markdown({ codeLanguages: languages }),

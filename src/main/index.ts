@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol, globalShortcut } from 'electron'
+import { app, BrowserWindow, protocol, globalShortcut, Menu } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { createMainWindow } from './windows/mainWindow'
@@ -80,6 +80,39 @@ app.whenReady().then(() => {
 
   // 注册 IPC handlers
   registerIpcHandlers(kernel)
+
+  // 设置应用菜单（macOS 需要菜单才能使用 Cmd+C/V/X/A 等快捷键）
+  if (process.platform === 'darwin') {
+    const template: Electron.MenuItemConstructorOptions[] = [
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      },
+      {
+        label: '编辑',
+        submenu: [
+          { role: 'undo', label: '撤销' },
+          { role: 'redo', label: '重做' },
+          { type: 'separator' },
+          { role: 'cut', label: '剪切' },
+          { role: 'copy', label: '复制' },
+          { role: 'paste', label: '粘贴' },
+          { role: 'pasteAndMatchStyle', label: '粘贴并匹配样式' },
+          { role: 'delete', label: '删除' },
+          { role: 'selectAll', label: '全选' },
+        ],
+      },
+    ]
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  }
 
   // 创建主窗口
   createMainWindow()
