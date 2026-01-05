@@ -129,6 +129,19 @@ export class DatabaseManager {
       )
     `)
 
+    // 创建 skills 表
+    this.sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS skills (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        raw_content TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `)
+
     // 索引
     this.sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source_id, source_type)`)
     this.sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target_id, target_type)`)

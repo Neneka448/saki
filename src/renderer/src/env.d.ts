@@ -6,6 +6,7 @@ import type { cardBridge } from '../../preload/bridges/cardBridge'
 import type { tagBridge } from '../../preload/bridges/tagBridge'
 import type { relationBridge } from '../../preload/bridges/relationBridge'
 import type { assetBridge } from '../../preload/bridges/assetBridge'
+import type { skillBridge } from '../../preload/bridges/skillBridge'
 
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
@@ -21,6 +22,7 @@ declare global {
     tag: typeof tagBridge
     relation: typeof relationBridge
     asset: typeof assetBridge
+    skill: typeof skillBridge
   }
 }
 

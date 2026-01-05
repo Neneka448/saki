@@ -58,10 +58,49 @@ const BASE_SYSTEM_PROMPT = [
   '- 优先直接执行，不反复追问。',
   '- 只有在意图完全无法判断时，才问 1 个最关键问题。',
   '',
+  '### Skills 专业技能',
+  '- 你可以访问一组专业技能（Skills），每个 skill 包含特定领域的专业指导。',
+  '- 当你识别到当前任务与某个 skill 的描述高度匹配时，调用 `activate_skill` 工具激活它。',
+  '- 激活后，skill 的详细指导会以 `<ACTIVATED_SKILL>` 标签返回。',
+  '- **重要**：一旦 skill 被激活，你必须（MUST）严格遵循 `<INSTRUCTIONS>` 中的指导完成任务。',
+  '- 将 skill 指导视为专家级的程序性指引，在任务期间优先于你的默认行为。',
+  '',
   '### 输出要求',
   '- 结果优先、回复简短。',
   '- 工具调用后必须继续输出用户可读结果，不要停在工具调用。',
 ].join('\n')
+
+// 缓存 skills prompt
+let cachedSkillsPrompt: string | null = null
+
+const getSkillsPromptSection = async (): Promise<string> => {
+  if (cachedSkillsPrompt !== null) {
+    return cachedSkillsPrompt
+  }
+  try {
+    const result = await window.skill.getPromptXml()
+    if (result.success && result.data) {
+      cachedSkillsPrompt = `\n\n### 可用的 Skills\n\n以下是你可以激活的专业技能列表。当任务与某个 skill 的描述匹配时，使用 \`activate_skill\` 工具激活它。\n\n${result.data}`
+    } else {
+      cachedSkillsPrompt = ''
+    }
+  } catch {
+    cachedSkillsPrompt = ''
+  }
+  return cachedSkillsPrompt
+}
+
+// 重置缓存（当 skills 更新时调用）
+export const resetSkillsPromptCache = () => {
+  cachedSkillsPrompt = null
+}
+
+// 监听 skills 变化
+if (window.skill?.onChanged) {
+  window.skill.onChanged(() => {
+    resetSkillsPromptCache()
+  })
+}
 
 const normalizeMaxToolRounds = (value: unknown) => {
   const numeric = typeof value === 'number' ? value : Number(value)
@@ -272,19 +311,24 @@ const buildLLMMessages = async (
   const latestCardTool = shouldAttachStickyImages ? findLatestCardTool(messages) : null
   const stickyImageRefs = latestCardTool ? await buildToolImageReferences(latestCardTool) : []
   const stickyImageParts = buildImagePartsWithIds(stickyImageRefs)
+  
+  // 构建系统提示词，包含 skills
   const trimmedPrompt = systemPrompt?.trim()
+  const skillsSection = await getSkillsPromptSection()
+  const baseWithSkills = BASE_SYSTEM_PROMPT + skillsSection
   const combinedPrompt = trimmedPrompt
-    ? `${BASE_SYSTEM_PROMPT}\n\n${trimmedPrompt}`
-    : BASE_SYSTEM_PROMPT
+    ? `${baseWithSkills}\n\n${trimmedPrompt}`
+    : baseWithSkills
   result.push({ role: 'system', content: combinedPrompt })
 
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index]
     if (message.kind === 'tool_call' && message.tool?.callId) {
       const tool = message.tool
+      const callId = tool.callId!
       const input = tool.input ?? {}
       const toolCall: ToolCall = {
-        id: tool.callId,
+        id: callId,
         type: 'function',
         function: {
           name: tool.name,
@@ -298,7 +342,7 @@ const buildLLMMessages = async (
       })
       result.push({
         role: 'tool',
-        tool_call_id: tool.callId,
+        tool_call_id: callId,
         content: JSON.stringify(tool.output ?? ''),
         name: tool.name,
       })
@@ -329,7 +373,8 @@ const requestLLM = async (
   settings: ChatSettings,
   model: string,
   messages: LLMMessage[],
-  enableTools: boolean
+  enableTools: boolean,
+  activeSkillTools?: string[] | null
 ): Promise<LLMResponse> => {
   const url = buildUrl(settings.endpoint, settings.path)
   if (!url) {
@@ -342,7 +387,15 @@ const requestLLM = async (
     temperature: 0.7,
   }
   if (enableTools) {
-    body.tools = getToolSchemas().map((tool) => ({
+    let tools = getToolSchemas()
+    
+    // 如果有激活的 skill 且指定了工具白名单，则进行过滤
+    if (activeSkillTools && activeSkillTools.length > 0) {
+      // 始终保留 activate_skill 和 deactivate_skill 工具，否则无法切换或退出 skill
+      tools = tools.filter(t => t.name === 'activate_skill' || t.name === 'deactivate_skill' || activeSkillTools.includes(t.name))
+    }
+
+    body.tools = tools.map((tool) => ({
       type: 'function',
       function: tool,
     }))
@@ -379,6 +432,9 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
   const { settings, conversation, userMessage, model, projectId, onUpdate } = options
   const messages: ChatMessage[] = [...conversation.messages, userMessage]
   const maxToolRounds = normalizeMaxToolRounds(settings.maxToolRounds)
+  
+  let activeSkillId = conversation.activeSkillId
+  let activeSkillTools = conversation.activeSkillTools
 
   const url = buildUrl(settings.endpoint, settings.path)
   if (!url) {
@@ -403,7 +459,7 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
   while (loop < maxToolRounds) {
     loop += 1
     const llmMessages = await buildLLMMessages(messages, settings.systemPrompt)
-    const response = await requestLLM(settings, model, llmMessages, true)
+    const response = await requestLLM(settings, model, llmMessages, true, activeSkillTools)
     lastResponse = response
     const responseContent = response.content?.trim() || ''
     if (responseContent) {
@@ -416,6 +472,25 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
       const toolDef = findTool(call.function.name)
       const input = parseToolArguments(call.function.arguments || '')
       const result = await runTool(call.function.name, input, { projectId })
+      
+      // 处理 activate_skill 特殊逻辑
+      if (call.function.name === 'activate_skill' && !result.output.error) {
+        // 我们需要从 skill 详情中获取 tools。由于 runTool 已经执行了，
+        // 我们可以从 result.output 中解析，或者重新查询。
+        // 为了简单，我们假设 activate_skill 的 output 包含了 tools 信息（稍后修改 toolRegistry）
+        if (result.output.tools) {
+          activeSkillTools = result.output.tools
+        } else {
+          activeSkillTools = null // 如果没有指定 tools，则允许所有
+        }
+      }
+      
+      // 处理 deactivate_skill 特殊逻辑
+      if (call.function.name === 'deactivate_skill') {
+        activeSkillId = null
+        activeSkillTools = null
+      }
+
       const toolPayload: ToolPayload = {
         name: call.function.name,
         description: toolDef?.description || '未找到工具描述',
@@ -434,5 +509,5 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
     onUpdate?.([...messages])
   }
 
-  return { messages }
+  return { messages, activeSkillId, activeSkillTools }
 }

@@ -268,6 +268,70 @@ const proposeOrganizationTool: ToolDefinition = {
   },
 }
 
+/**
+ * activate_skill 工具
+ * 让 AI 激活一个特定的 skill，获取其完整指导内容
+ */
+const activateSkillTool: ToolDefinition = {
+  name: 'activate_skill',
+  description: '激活一个专业技能（skill）。当你识别到当前任务与某个 skill 的描述匹配时，调用此工具获取该 skill 的详细指导。返回的内容包含在 <ACTIVATED_SKILL> 标签中，你必须严格按照其中的 <INSTRUCTIONS> 执行任务。',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: {
+        type: 'string',
+        description: '要激活的 skill 名称',
+      },
+    },
+    required: ['name'],
+  },
+  execute: async (input) => {
+    const skillName = input.name as string
+    if (!skillName) {
+      return { output: { error: 'Skill name is required' } }
+    }
+    
+    try {
+      const result = await window.skill.getByName(skillName)
+      if (!result.success || !result.data) {
+        const namesResult = await window.skill.getNames()
+        const names = namesResult.success ? namesResult.data : []
+        return {
+          output: {
+            error: `Skill "${skillName}" not found. Available skills: ${names.join(', ') || 'none'}`,
+          },
+        }
+      }
+      
+      const skill = result.data
+      // 返回激活的 skill 内容
+      const formattedResult = await window.skill.formatActivatedSkill(skill)
+      return {
+        output: {
+          content: formattedResult.success ? formattedResult.data : skill.body,
+          tools: skill.tools,
+        },
+      }
+    } catch (e) {
+      return { output: { error: `Failed to activate skill: ${e}` } }
+    }
+  },
+}
+
+const deactivateSkillTool: ToolDefinition = {
+  name: 'deactivate_skill',
+  description: '停用当前激活的专业技能，恢复到默认状态。当你完成特定技能相关的任务后调用此工具。',
+  parameters: {
+    type: 'object',
+    properties: {},
+  },
+  execute: async () => {
+    return {
+      output: '已停用当前 Skill，恢复默认状态。',
+    }
+  },
+}
+
 export const toolRegistry: ToolDefinition[] = [
   getCurrentTimeTool,
   listTagsTool,
@@ -275,6 +339,8 @@ export const toolRegistry: ToolDefinition[] = [
   listCardsTool,
   getCardTool,
   proposeOrganizationTool,
+  activateSkillTool,
+  deactivateSkillTool,
 ]
 
 export const getToolSchemas = (): ToolSchema[] => {
@@ -283,6 +349,10 @@ export const getToolSchemas = (): ToolSchema[] => {
     description: tool.description,
     parameters: tool.parameters,
   }))
+}
+
+export const getToolNames = (): string[] => {
+  return toolRegistry.map((tool) => tool.name)
 }
 
 export const findTool = (name: string) => toolRegistry.find((tool) => tool.name === name)

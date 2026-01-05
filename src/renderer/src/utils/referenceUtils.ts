@@ -108,32 +108,21 @@ export const normalizeCardReferences = (
     })
 
     // 检测孤立的 ref 注释（不属于任何引用的注释）
-    // 只记录警告，不阻止保存
     const allRefComments = replaced.match(REF_COMMENT_PATTERN)
     if (allRefComments && allRefComments.length > references.length) {
-        console.warn('Orphan ref comment detected, will be cleaned up')
-        // 清理孤立的 ref 注释（但跳过代码块内的）
         const validRefIds = new Set(references.map(r => r.refId))
-        let cleanedContent = ''
-        let lastIndex = 0
-
+        
         REF_COMMENT_PATTERN.lastIndex = 0
         let commentMatch
         while ((commentMatch = REF_COMMENT_PATTERN.exec(replaced)) !== null) {
             const refId = commentMatch[1]
             const pos = commentMatch.index
 
-            // 保留代码块内的注释或有效的引用注释
-            if (isInCodeRange(pos, codeRanges) || validRefIds.has(refId)) {
-                cleanedContent += replaced.slice(lastIndex, pos + commentMatch[0].length)
-            } else {
-                cleanedContent += replaced.slice(lastIndex, pos)
+            // 如果不在代码块内且不属于任何有效引用，则视为孤立注释
+            if (!isInCodeRange(pos, codeRanges) && !validRefIds.has(refId)) {
+                throw new Error('Orphan ref comment detected')
             }
-            lastIndex = pos + commentMatch[0].length
         }
-        cleanedContent += replaced.slice(lastIndex)
-
-        return { content: cleanedContent, references }
     }
 
     return { content: replaced, references }

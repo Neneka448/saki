@@ -79,4 +79,20 @@ export const channels = {
     getAssetPath: 'asset:getAssetPath',
     deleteAsset: 'asset:deleteAsset',
   },
+
+  // Skills 相关
+  skill: {
+    getAll: 'skill:getAll',
+    getSummaries: 'skill:getSummaries',
+    getById: 'skill:getById',
+    getByName: 'skill:getByName',
+    validate: 'skill:validate',
+    add: 'skill:add',
+    update: 'skill:update',
+    delete: 'skill:delete',
+    getPromptXml: 'skill:getPromptXml',
+    getNames: 'skill:getNames',
+    formatActivatedSkill: 'skill:formatActivatedSkill',
+    onChanged: 'skill:onChanged',
+  },
 } as const

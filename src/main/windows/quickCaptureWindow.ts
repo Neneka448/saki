@@ -84,8 +84,8 @@ export const isQuickCapturePinned = () => isPinned
 
 export const showQuickCaptureWindow = () => {
   const window = createQuickCaptureWindow()
-  if (process.platform === 'darwin' && typeof window.moveToActiveSpace === 'function') {
-    window.moveToActiveSpace()
+  if (process.platform === 'darwin' && typeof (window as any).moveToActiveSpace === 'function') {
+    (window as any).moveToActiveSpace()
   }
   positionWindow(window)
   window.show()

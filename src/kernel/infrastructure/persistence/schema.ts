@@ -71,3 +71,16 @@ export const relations = sqliteTable('relations', {
     meta: text('meta', { mode: 'json' }).$type<Record<string, unknown>>(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 })
+
+/**
+ * Skills 表 - 存储 AI 专业技能
+ */
+export const skills = sqliteTable('skills', {
+    id: text('id').primaryKey(),  // UUID
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    rawContent: text('raw_content').notNull(),  // 包含 frontmatter 的原始内容
+    body: text('body').notNull(),  // 解析后的正文
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})

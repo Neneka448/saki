@@ -5,6 +5,7 @@ import { cardBridge } from './bridges/cardBridge'
 import { tagBridge } from './bridges/tagBridge'
 import { relationBridge } from './bridges/relationBridge'
 import { assetBridge } from './bridges/assetBridge'
+import { skillBridge } from './bridges/skillBridge'
 
 // 暴露 API 到渲染进程
 contextBridge.exposeInMainWorld('app', appBridge)
@@ -13,3 +14,4 @@ contextBridge.exposeInMainWorld('card', cardBridge)
 contextBridge.exposeInMainWorld('tag', tagBridge)
 contextBridge.exposeInMainWorld('relation', relationBridge)
 contextBridge.exposeInMainWorld('asset', assetBridge)
+contextBridge.exposeInMainWorld('skill', skillBridge)

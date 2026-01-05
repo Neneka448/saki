@@ -5,6 +5,7 @@ import { registerTagHandlers } from './handlers/tagHandlers'
 import { registerRelationHandlers } from './handlers/relationHandlers'
 import { registerAssetHandlers } from './handlers/assetHandlers'
 import { registerAppHandlers } from './handlers/appHandlers'
+import { registerSkillHandlers } from './handlers/skillHandlers'
 
 /**
  * 注册所有 IPC handlers
@@ -17,6 +18,7 @@ export function registerIpcHandlers(kernel: KernelApi): void {
   registerTagHandlers(kernel)
   registerRelationHandlers(kernel)
   registerAssetHandlers()
+  registerSkillHandlers(kernel)  // 传递 kernel 实例
 
   console.log('[IPC] All handlers registered')
 }

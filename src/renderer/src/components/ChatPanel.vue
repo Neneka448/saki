@@ -15,7 +15,8 @@ import {
   type ChatMessage,
   type ChatSettings,
 } from '../services/chatStorage'
-import { sendChatWithTools } from '../services/chatAgent'
+import { sendChatWithTools, resetSkillsPromptCache } from '../services/chatAgent'
+import { getToolNames } from '../services/toolRegistry'
 import OrganizationProposal from './OrganizationProposal.vue'
 
 const emit = defineEmits<{
@@ -29,8 +30,54 @@ const currentProject = inject<{ value: Project | null }>('currentProject', { val
 const inputText = ref('')
 const isLoading = ref(false)
 const panelTab = ref<'none' | 'history' | 'control'>('none')
-const controlTab = ref<'session' | 'shortcuts'>('session')
+const controlTab = ref<'session' | 'shortcuts' | 'skills'>('session')
 const expandedToolIds = ref(new Set<string>())
+
+// Skills 相关状态
+import type { SkillDefinition, SkillSummary } from '../../../shared/skills/types'
+const skills = ref<SkillDefinition[]>([])
+const skillEditId = ref<string | null>(null)
+const skillEditContent = ref('')
+const skillEditError = ref('')
+const skillValidating = ref(false)
+const availableTools = ref<string[]>(getToolNames())
+const selectedTools = ref<string[]>([])
+
+// 监听 skillEditContent 变化，解析 tools 字段
+watch(skillEditContent, (newContent) => {
+  const toolsMatch = newContent.match(/^tools:\s*(.+)$/m)
+  if (toolsMatch) {
+    const tools = toolsMatch[1].split(',').map(t => t.trim()).filter(t => !!t)
+    // 只有当解析出的 tools 与当前选中的不同时才更新，避免循环
+    if (JSON.stringify(tools.sort()) !== JSON.stringify([...selectedTools.value].sort())) {
+      selectedTools.value = tools
+    }
+  } else if (selectedTools.value.length > 0) {
+    selectedTools.value = []
+  }
+})
+
+// 监听 selectedTools 变化，更新 skillEditContent 中的 tools 字段
+watch(selectedTools, (newTools) => {
+  const toolsLine = newTools.length > 0 ? `tools: ${newTools.join(', ')}` : ''
+  const hasTools = /^tools:\s*.*$/m.test(skillEditContent.value)
+
+  if (hasTools) {
+    if (newTools.length > 0) {
+      skillEditContent.value = skillEditContent.value.replace(/^tools:\s*.*$/m, toolsLine)
+    } else {
+      // 如果没有选中工具，移除 tools 行（包括换行符）
+      skillEditContent.value = skillEditContent.value.replace(/^tools:\s*.*\r?\n/m, '')
+    }
+  } else if (newTools.length > 0) {
+    // 如果没有 tools 行但选中了工具，插入到 name 或 description 之后
+    if (/^description:\s*.*$/m.test(skillEditContent.value)) {
+      skillEditContent.value = skillEditContent.value.replace(/^description:\s*(.*)$/m, `$0\n${toolsLine}`)
+    } else if (/^name:\s*.*$/m.test(skillEditContent.value)) {
+      skillEditContent.value = skillEditContent.value.replace(/^name:\s*(.*)$/m, `$0\n${toolsLine}`)
+    }
+  }
+})
 
 const settings = ref<ChatSettings>(loadChatSettings())
 const settingsDraft = ref<ChatSettings>({ ...settings.value })
@@ -165,10 +212,13 @@ const sendMessage = async () => {
     })
 
     const finalConversation = updateConversationMessages(streamingConversation, result.messages)
+    finalConversation.activeSkillId = result.activeSkillId
+    finalConversation.activeSkillTools = result.activeSkillTools
+
     if (finalConversation.title === '新对话') {
       finalConversation.title = text.slice(0, 20)
-      saveConversation(finalConversation)
     }
+    saveConversation(finalConversation)
     conversations.value = conversations.value.map((item) =>
       item.id === finalConversation.id ? finalConversation : item
     )
@@ -415,9 +465,103 @@ const loadShortcutSettings = async () => {
   defaultQuickCaptureShortcut.value = result.defaultShortcut || defaultQuickCaptureShortcut.value
 }
 
+// Skills 管理函数
+const loadSkills = async () => {
+  try {
+    const result = await window.skill.getAll()
+    if (result.success) {
+      skills.value = result.data
+    }
+  } catch (e) {
+    console.error('Failed to load skills:', e)
+  }
+}
+
+const startNewSkill = () => {
+  skillEditId.value = 'new'
+  skillEditContent.value = `---\nname: my-skill\ndescription: 描述这个 skill 的作用\n---\n\n在这里写 skill 的详细指导内容...`
+  skillEditError.value = ''
+}
+
+const editSkill = (skill: SkillDefinition) => {
+  skillEditId.value = skill.id
+  skillEditContent.value = skill.rawContent
+  skillEditError.value = ''
+}
+
+const cancelSkillEdit = () => {
+  skillEditId.value = null
+  skillEditContent.value = ''
+  skillEditError.value = ''
+}
+
+const validateSkillContent = async () => {
+  skillValidating.value = true
+  skillEditError.value = ''
+  try {
+    const excludeId = skillEditId.value === 'new' ? undefined : skillEditId.value ?? undefined
+    const result = await window.skill.validate(skillEditContent.value, excludeId)
+    if (!result.success) {
+      skillEditError.value = result.error
+    }
+  } catch (e) {
+    skillEditError.value = '验证失败'
+  } finally {
+    skillValidating.value = false
+  }
+}
+
+const saveSkill = async () => {
+  skillEditError.value = ''
+  try {
+    if (skillEditId.value === 'new') {
+      const result = await window.skill.add(skillEditContent.value)
+      if (!result.success) {
+        skillEditError.value = result.error
+        return
+      }
+    } else if (skillEditId.value) {
+      const result = await window.skill.update(skillEditId.value, skillEditContent.value)
+      if (!result.success) {
+        skillEditError.value = result.error
+        return
+      }
+    }
+    await loadSkills()
+    resetSkillsPromptCache() // 重置缓存，下次请求时会重新构建 skills prompt
+    cancelSkillEdit()
+  } catch (e) {
+    skillEditError.value = '保存失败'
+  }
+}
+
+const deleteSkill = async (id: string) => {
+  if (!confirm('确定要删除这个 Skill 吗？')) return
+  try {
+    const result = await window.skill.delete(id)
+    if (result.success) {
+      await loadSkills()
+      resetSkillsPromptCache() // 重置缓存
+    } else {
+      alert(`删除失败: ${result.error}`)
+    }
+  } catch (e) {
+    console.error('Failed to delete skill:', e)
+  }
+}
+
+const deactivateCurrentSkill = () => {
+  if (activeConversation.value) {
+    activeConversation.value.activeSkillId = null
+    activeConversation.value.activeSkillTools = null
+    saveConversation(activeConversation.value)
+  }
+}
+
 onMounted(() => {
   ensureConversation()
   loadShortcutSettings()
+  loadSkills()
   document.addEventListener('click', handleOutsideClick)
 })
 
@@ -488,7 +632,7 @@ watch(() => settingsDraft.value.modelsText, () => {
         </button>
         <button class="chat-header__action" title="收起对话" @click="emit('toggle-collapse')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M15 18l-6-6 6-6" />
+            <path d="M9 18l6-6-6-6" />
           </svg>
         </button>
       </div>
@@ -539,6 +683,13 @@ watch(() => settingsDraft.value.modelsText, () => {
           >
             快捷键
           </button>
+          <button
+            class="chat-control__tab"
+            :class="{ 'chat-control__tab--active': controlTab === 'skills' }"
+            @click="controlTab = 'skills'"
+          >
+            Skills
+          </button>
         </div>
 
         <div v-if="controlTab === 'session'" class="chat-settings">
@@ -574,7 +725,7 @@ watch(() => settingsDraft.value.modelsText, () => {
           <button class="chat-settings__save" @click="saveSettings">保存设置</button>
         </div>
 
-        <div v-else class="chat-hotkey">
+        <div v-else-if="controlTab === 'shortcuts'" class="chat-hotkey">
           <div class="chat-hotkey__row">
             <button
               class="chat-hotkey__capture"
@@ -606,11 +757,88 @@ watch(() => settingsDraft.value.modelsText, () => {
           <div v-if="shortcutError" class="chat-hotkey__error">{{ shortcutError }}</div>
           <div class="chat-hotkey__current">当前快捷键：{{ quickCaptureShortcut || defaultQuickCaptureShortcut }}</div>
         </div>
+
+        <!-- Skills 设置 -->
+        <div v-else-if="controlTab === 'skills'" class="chat-skills">
+          <!-- 编辑状态 -->
+          <template v-if="skillEditId">
+            <div class="chat-skills__editor">
+              <div class="chat-skills__tools-select">
+                <label class="chat-skills__tools-label">准入工具 (白名单):</label>
+                <div class="chat-skills__tools-list">
+                  <label v-for="tool in availableTools" :key="tool" class="chat-skills__tool-option">
+                    <input
+                      type="checkbox"
+                      :value="tool"
+                      :checked="selectedTools.includes(tool)"
+                      @change="(e) => {
+                        const checked = (e.target as HTMLInputElement).checked
+                        if (checked) {
+                          selectedTools = [...selectedTools, tool]
+                        } else {
+                          selectedTools = selectedTools.filter(t => t !== tool)
+                        }
+                      }"
+                    />
+                    {{ tool }}
+                  </label>
+                </div>
+                <div class="chat-skills__tools-hint">如果不选，则默认允许使用所有工具。</div>
+              </div>
+              <textarea
+                v-model="skillEditContent"
+                class="chat-skills__textarea"
+                rows="12"
+                placeholder="---&#10;name: my-skill&#10;description: 描述这个 skill 的作用&#10;---&#10;&#10;在这里写 skill 的详细指导内容..."
+                @blur="validateSkillContent"
+              ></textarea>
+              <div v-if="skillEditError" class="chat-skills__error">{{ skillEditError }}</div>
+              <div class="chat-skills__actions">
+                <button class="chat-skills__btn chat-skills__btn--secondary" @click="cancelSkillEdit">取消</button>
+                <button class="chat-skills__btn chat-skills__btn--primary" :disabled="skillValidating" @click="saveSkill">
+                  {{ skillEditId === 'new' ? '添加' : '保存' }}
+                </button>
+              </div>
+            </div>
+          </template>
+          <!-- 列表状态 -->
+          <template v-else>
+            <div class="chat-skills__header">
+              <span class="chat-skills__count">{{ skills.length }} 个 Skills</span>
+              <button class="chat-skills__add" @click="startNewSkill">+ 添加</button>
+            </div>
+            <div v-if="skills.length === 0" class="chat-skills__empty">
+              暂无 Skills，点击上方按钮添加
+            </div>
+            <div v-else class="chat-skills__list">
+              <div v-for="skill in skills" :key="skill.id" class="chat-skills__item">
+                <div class="chat-skills__info">
+                  <div class="chat-skills__name">{{ skill.name }}</div>
+                  <div class="chat-skills__desc">{{ skill.description }}</div>
+                </div>
+                <div class="chat-skills__item-actions">
+                  <button class="chat-skills__item-btn" title="编辑" @click="editSkill(skill)">✏️</button>
+                  <button class="chat-skills__item-btn" title="删除" @click="deleteSkill(skill.id)">🗑️</button>
+                </div>
+              </div>
+            </div>
+            <div class="chat-skills__hint">
+              Skills 是 AI 的专业技能指导。当 AI 识别到任务匹配某个 skill 时，会自动激活并按照指导执行。
+            </div>
+          </template>
+        </div>
       </div>
     </div>
 
     <!-- 消息列表 -->
     <div class="chat-messages">
+      <div v-if="activeConversation?.activeSkillTools" class="chat-active-skill">
+        <span class="chat-active-skill__icon">⚡</span>
+        <span class="chat-active-skill__text">
+          当前激活了专业技能，工具已受限：{{ activeConversation.activeSkillTools.join(', ') }}
+        </span>
+        <button class="chat-active-skill__close" @click="deactivateCurrentSkill">退出技能模式</button>
+      </div>
       <div
         v-for="msg in messages"
         :key="msg.id"
@@ -1098,6 +1326,50 @@ watch(() => settingsDraft.value.modelsText, () => {
   gap: 14px;
 }
 
+.chat-active-skill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: var(--radius-md);
+  margin-bottom: 4px;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.chat-active-skill__icon {
+  font-size: 14px;
+}
+
+.chat-active-skill__text {
+  flex: 1;
+  font-size: 12px;
+  color: #4338ca;
+  font-weight: 500;
+}
+
+.chat-active-skill__close {
+  font-size: 11px;
+  color: #4338ca;
+  background: white;
+  border: 1px solid #c7d2fe;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chat-active-skill__close:hover {
+  background: #4338ca;
+  color: white;
+}
+
 .chat-message {
   display: flex;
   gap: 12px;
@@ -1401,5 +1673,229 @@ watch(() => settingsDraft.value.modelsText, () => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Skills 设置 */
+.chat-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.chat-skills__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat-skills__count {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.chat-skills__add {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: white;
+  transition: all 0.15s;
+}
+
+.chat-skills__add:hover {
+  background: var(--color-accent);
+}
+
+.chat-skills__empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-soft);
+  border-radius: var(--radius-md);
+}
+
+.chat-skills__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-skills__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.chat-skills__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-skills__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+.chat-skills__desc {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.chat-skills__item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.chat-skills__item-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.chat-skills__item-btn:hover {
+  background: var(--color-bg-soft);
+}
+
+.chat-skills__hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.chat-skills__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-skills__tools-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--color-bg-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.chat-skills__tools-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.chat-skills__tools-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-skills__tool-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 2px 6px;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.chat-skills__tool-option:hover {
+  border-color: var(--color-primary);
+}
+
+.chat-skills__tools-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.chat-skills__textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  resize: vertical;
+}
+
+.chat-skills__textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(58, 109, 246, 0.12);
+}
+
+.chat-skills__error {
+  font-size: 12px;
+  color: var(--color-danger, #ef4444);
+  padding: 6px 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: var(--radius-sm);
+}
+
+.chat-skills__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.chat-skills__btn {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+}
+
+.chat-skills__btn--primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.chat-skills__btn--primary:hover:not(:disabled) {
+  background: var(--color-accent);
+}
+
+.chat-skills__btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-skills__btn--secondary {
+  background: var(--color-bg-soft);
+  color: var(--color-text-secondary);
+}
+
+.chat-skills__btn--secondary:hover {
+  background: var(--color-border);
+  color: var(--color-text);
 }
 </style>

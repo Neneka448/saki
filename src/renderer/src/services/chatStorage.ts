@@ -25,6 +25,8 @@ export interface ChatConversation {
   title: string
   model: string
   messages: ChatMessage[]
+  activeSkillId?: string | null
+  activeSkillTools?: string[] | null
   createdAt: number
   updatedAt: number
 }

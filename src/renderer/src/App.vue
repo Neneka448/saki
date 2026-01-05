@@ -57,7 +57,8 @@ const startResize = (event: MouseEvent) => {
 
 const handleResize = (event: MouseEvent) => {
   if (!isResizing.value) return
-  const delta = event.clientX - resizeState.value.startX
+  // 右侧面板：鼠标向左移动时增加宽度
+  const delta = resizeState.value.startX - event.clientX
   applyChatWidth(resizeState.value.startWidth + delta)
 }
 
@@ -109,16 +110,16 @@ onMounted(async () => {
   
   <!-- 选择项目后显示主界面 -->
   <div v-else class="app-layout" :style="{ '--chat-width': `${chatWidth}px` }">
+    <WorkspacePanel :project-id="currentProject.id" />
+    <div v-if="!isChatCollapsed" class="chat-resizer" @mousedown="startResize"></div>
     <ChatPanel v-if="!isChatCollapsed" @toggle-collapse="toggleChat" />
     <div v-else class="chat-collapsed">
       <button class="chat-collapsed__btn" @click="expandChat">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 18l6-6-6-6" />
+          <path d="M15 18l-6-6 6-6" />
         </svg>
       </button>
     </div>
-    <div v-if="!isChatCollapsed" class="chat-resizer" @mousedown="startResize"></div>
-    <WorkspacePanel :project-id="currentProject.id" />
   </div>
 </template>
 

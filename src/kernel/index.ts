@@ -1,9 +1,11 @@
 import { DatabaseManager } from './infrastructure/persistence/database'
 import { DrizzleCardRepository, DrizzleTagRepository, DrizzleRelationRepository } from './infrastructure/persistence/repositories'
 import { DrizzleProjectRepository } from './infrastructure/persistence/repositories/DrizzleProjectRepository'
+import { DrizzleSkillRepository } from './infrastructure/persistence/repositories/DrizzleSkillRepository'
 import { CardService, TagService, RelationService } from './domain/services'
 import { ProjectService } from './domain/services/ProjectService'
-import { CardApi, TagApi, RelationApi, ProjectApi } from './api'
+import { SkillService } from './domain/services/SkillService'
+import { CardApi, TagApi, RelationApi, ProjectApi, SkillApi } from './api'
 
 /**
  * Kernel API 接口
@@ -13,6 +15,7 @@ export interface KernelApi {
     card: CardApi
     tag: TagApi
     relation: RelationApi
+    skill: SkillApi
     close: () => void
 }
 
@@ -53,24 +56,28 @@ export function createKernel(config: KernelConfig): KernelApi {
     const cardRepo = new DrizzleCardRepository(db)
     const tagRepo = new DrizzleTagRepository(db)
     const relationRepo = new DrizzleRelationRepository(db)
+    const skillRepo = new DrizzleSkillRepository(db)
 
     // 3. 创建领域服务
     const projectService = new ProjectService(projectRepo)
     const cardService = new CardService(cardRepo, tagRepo, relationRepo)
     const tagService = new TagService(tagRepo, relationRepo)
     const relationService = new RelationService(relationRepo)
+    const skillService = new SkillService(skillRepo)
 
     // 4. 创建 API 层
     const projectApi = new ProjectApi(projectService)
     const cardApi = new CardApi(cardService)
     const tagApi = new TagApi(tagService)
     const relationApi = new RelationApi(relationService)
+    const skillApi = new SkillApi(skillService)
 
     return {
         project: projectApi,
         card: cardApi,
         tag: tagApi,
         relation: relationApi,
+        skill: skillApi,
         close: () => dbManager.close(),
     }
 }
@@ -78,4 +85,4 @@ export function createKernel(config: KernelConfig): KernelApi {
 // 导出类型和工具
 export * from './domain/entities'
 export * from './api/Result'
-export type { ProjectApi, CardApi, TagApi, RelationApi }
+export type { ProjectApi, CardApi, TagApi, RelationApi, SkillApi }

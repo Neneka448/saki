@@ -4,14 +4,17 @@ import { ProjectApi } from '../../../kernel/api/ProjectApi'
 import { CardApi } from '../../../kernel/api/CardApi'
 import { TagApi } from '../../../kernel/api/TagApi'
 import { RelationApi } from '../../../kernel/api/RelationApi'
+import { SkillApi } from '../../../kernel/api/SkillApi'
 import { ProjectService } from '../../../kernel/domain/services/ProjectService'
 import { CardService } from '../../../kernel/domain/services/CardService'
 import { TagService } from '../../../kernel/domain/services/TagService'
 import { RelationService } from '../../../kernel/domain/services/RelationService'
+import { SkillService } from '../../../kernel/domain/services/SkillService'
 import {
     MockCardRepository,
     MockTagRepository,
     MockRelationRepository,
+    MockSkillRepository,
 } from '../../../kernel/__tests__/mocks'
 import { MockProjectRepository } from './MockProjectRepository'
 
@@ -24,34 +27,40 @@ export function createMockKernel(): KernelApi & {
         cardRepo: MockCardRepository
         tagRepo: MockTagRepository
         relationRepo: MockRelationRepository
+        skillRepo: MockSkillRepository
     }
 } {
     const projectRepo = new MockProjectRepository()
     const cardRepo = new MockCardRepository()
     const tagRepo = new MockTagRepository()
     const relationRepo = new MockRelationRepository()
+    const skillRepo = new MockSkillRepository()
 
     const projectService = new ProjectService(projectRepo)
     const cardService = new CardService(cardRepo, tagRepo, relationRepo)
     const tagService = new TagService(tagRepo, relationRepo)
     const relationService = new RelationService(relationRepo)
+    const skillService = new SkillService(skillRepo)
 
     const projectApi = new ProjectApi(projectService)
     const cardApi = new CardApi(cardService)
     const tagApi = new TagApi(tagService)
     const relationApi = new RelationApi(relationService)
+    const skillApi = new SkillApi(skillService)
 
     return {
         project: projectApi,
         card: cardApi,
         tag: tagApi,
         relation: relationApi,
+        skill: skillApi,
         close: vi.fn(),
         _mocks: {
             projectRepo,
             cardRepo,
             tagRepo,
             relationRepo,
+            skillRepo,
         },
     }
 }
