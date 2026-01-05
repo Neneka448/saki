@@ -14,8 +14,7 @@ const isResizing = ref(false)
 const resizeState = ref({ startX: 0, startWidth: 320 })
 
 const applyChatWidth = (value: number) => {
-  const clamped = Math.min(420, Math.max(240, value))
-  chatWidth.value = clamped
+  chatWidth.value = Math.max(0, value)
 }
 
 // 提供给子组件使用

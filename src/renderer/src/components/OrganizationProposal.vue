@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 interface Operation {
   id: number
@@ -17,18 +17,26 @@ interface ProposalData {
 const props = defineProps<{
   data: ProposalData
   projectId: number
+  completed?: boolean
 }>()
 
 const emit = defineEmits<{
-  confirm: [operations: Operation[]]
+  confirm: []
   cancel: []
 }>()
 
 const isSubmitting = ref(false)
-const isCompleted = ref(false)
+const isCompleted = ref(props.completed || false)
 const error = ref('')
 
 const operations = computed(() => props.data.operations || [])
+
+// 监听 props.completed 变化
+watch(() => props.completed, (val) => {
+  if (val !== undefined) {
+    isCompleted.value = val
+  }
+})
 
 const handleConfirm = async () => {
   if (isSubmitting.value || isCompleted.value) return
@@ -84,7 +92,7 @@ const handleConfirm = async () => {
     const result = await window.card.batchUpdate(props.projectId, resolvedOperations)
     if (result.success) {
       isCompleted.value = true
-      emit('confirm', operations.value)
+      emit('confirm')
     } else {
       error.value = result.error || '更新失败'
     }

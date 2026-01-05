@@ -558,6 +558,15 @@ const deactivateCurrentSkill = () => {
   }
 }
 
+const handleProposalConfirm = (messageId: string) => {
+  if (!activeConversation.value) return
+  const msg = activeConversation.value.messages.find(m => m.id === messageId)
+  if (msg && msg.tool && msg.tool.output) {
+    (msg.tool.output as any).isCompleted = true
+    saveConversation(activeConversation.value)
+  }
+}
+
 onMounted(() => {
   ensureConversation()
   loadShortcutSettings()
@@ -855,7 +864,8 @@ watch(() => settingsDraft.value.modelsText, () => {
               <OrganizationProposal
                 :data="(msg.tool?.output as any).data"
                 :project-id="projectId || 0"
-                @confirm="(ops) => { /* 确认后可以做一些 UI 更新，比如禁用按钮，组件内部已经处理了 */ }"
+                :completed="(msg.tool?.output as any).isCompleted"
+                @confirm="handleProposalConfirm(msg.id)"
               />
             </template>
             <template v-else>

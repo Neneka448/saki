@@ -933,13 +933,14 @@ watch(tagEditColor, () => {
   display: flex;
   background: transparent;
   gap: 8px;
+  min-width: 0;
   animation: panel-rise 0.35s ease both;
 }
 
 /* 左侧列表区 */
 .workspace-list {
   width: 260px;
-  min-width: 220px;
+  min-width: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -954,6 +955,7 @@ watch(tagEditColor, () => {
 /* 右侧编辑区 */
 .workspace-editor {
   flex: 1;
+  min-width: 0;
   height: 100%;
   padding: 8px;
   overflow: hidden;

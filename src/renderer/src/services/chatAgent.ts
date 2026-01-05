@@ -501,12 +501,19 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
       toolPayloads.push(toolPayload)
       toolMessages.push(createMessage('assistant', '', 'tool_call', toolPayload))
     }
+    
     if (toolPayloads.length === 0) {
       break
     }
 
     messages.push(...toolMessages)
     onUpdate?.([...messages])
+
+    // 如果包含需要用户确认的提案，则中断循环，等待用户操作
+    const hasProposal = toolPayloads.some(p => (p.output as any)?._isProposal)
+    if (hasProposal) {
+      break
+    }
   }
 
   return { messages, activeSkillId, activeSkillTools }
