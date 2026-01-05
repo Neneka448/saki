@@ -290,7 +290,7 @@ const activateSkillTool: ToolDefinition = {
     if (!skillName) {
       return { output: { error: 'Skill name is required' } }
     }
-    
+
     try {
       const result = await window.skill.getByName(skillName)
       if (!result.success || !result.data) {
@@ -302,7 +302,7 @@ const activateSkillTool: ToolDefinition = {
           },
         }
       }
-      
+
       const skill = result.data
       // 返回激活的 skill 内容
       const formattedResult = await window.skill.formatActivatedSkill(skill)

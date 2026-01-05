@@ -311,7 +311,7 @@ const buildLLMMessages = async (
   const latestCardTool = shouldAttachStickyImages ? findLatestCardTool(messages) : null
   const stickyImageRefs = latestCardTool ? await buildToolImageReferences(latestCardTool) : []
   const stickyImageParts = buildImagePartsWithIds(stickyImageRefs)
-  
+
   // 构建系统提示词，包含 skills
   const trimmedPrompt = systemPrompt?.trim()
   const skillsSection = await getSkillsPromptSection()
@@ -388,7 +388,7 @@ const requestLLM = async (
   }
   if (enableTools) {
     let tools = getToolSchemas()
-    
+
     // 如果有激活的 skill 且指定了工具白名单，则进行过滤
     if (activeSkillTools && activeSkillTools.length > 0) {
       // 始终保留 activate_skill 和 deactivate_skill 工具，否则无法切换或退出 skill
@@ -432,7 +432,7 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
   const { settings, conversation, userMessage, model, projectId, onUpdate } = options
   const messages: ChatMessage[] = [...conversation.messages, userMessage]
   const maxToolRounds = normalizeMaxToolRounds(settings.maxToolRounds)
-  
+
   let activeSkillId = conversation.activeSkillId
   let activeSkillTools = conversation.activeSkillTools
 
@@ -472,7 +472,7 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
       const toolDef = findTool(call.function.name)
       const input = parseToolArguments(call.function.arguments || '')
       const result = await runTool(call.function.name, input, { projectId })
-      
+
       // 处理 activate_skill 特殊逻辑
       if (call.function.name === 'activate_skill' && !result.output.error) {
         // 我们需要从 skill 详情中获取 tools。由于 runTool 已经执行了，
@@ -484,7 +484,7 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
           activeSkillTools = null // 如果没有指定 tools，则允许所有
         }
       }
-      
+
       // 处理 deactivate_skill 特殊逻辑
       if (call.function.name === 'deactivate_skill') {
         activeSkillId = null

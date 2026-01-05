@@ -111,7 +111,7 @@ export const normalizeCardReferences = (
     const allRefComments = replaced.match(REF_COMMENT_PATTERN)
     if (allRefComments && allRefComments.length > references.length) {
         const validRefIds = new Set(references.map(r => r.refId))
-        
+
         REF_COMMENT_PATTERN.lastIndex = 0
         let commentMatch
         while ((commentMatch = REF_COMMENT_PATTERN.exec(replaced)) !== null) {

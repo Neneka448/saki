@@ -7,7 +7,7 @@ import { type Result, ok, err } from '../../api/Result'
 export class SkillService {
     private cachedPromptXml: string | null = null
 
-    constructor(private skillRepo: ISkillRepository) {}
+    constructor(private skillRepo: ISkillRepository) { }
 
     getAll(): SkillDefinition[] {
         return this.skillRepo.findAll()
@@ -32,7 +32,7 @@ export class SkillService {
 
     validateContent(content: string, excludeId?: string): Result<ParsedSkill> {
         const result = parseSkillContent(content)
-        
+
         if (isParseError(result)) {
             return err(result.error)
         }

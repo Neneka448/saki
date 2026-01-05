@@ -208,7 +208,7 @@ describe('ChatPanel', () => {
             })
 
             const wrapper = mount(ChatPanel, mountOptions)
-            
+
             // Send a message to trigger sendChatWithTools
             const textarea = wrapper.find('.chat-input__textarea')
             await textarea.setValue('Activate skill')
@@ -248,48 +248,48 @@ describe('ChatPanel', () => {
     describe('Skill Editor Tools Sync', () => {
         it('should sync tools from frontmatter to checkboxes', async () => {
             const wrapper = mount(ChatPanel, mountOptions)
-            
+
             // Open control panel
             await wrapper.find('.chat-header__control[title="控制面板"]').trigger('click')
-            
+
             // Switch to skills tab
             const tabs = wrapper.findAll('.chat-control__tab')
             const skillsTab = tabs.find(t => t.text() === 'Skills')
             await skillsTab?.trigger('click')
-            
+
             // Start new skill
             await wrapper.find('.chat-skills__add').trigger('click')
-            
+
             const textarea = wrapper.find('.chat-skills__textarea')
             await textarea.setValue('---\nname: test\ndescription: test\ntools: tool1\n---\nbody')
-            
+
             await nextTick()
-            
+
             const checkbox = wrapper.find('input[type="checkbox"][value="tool1"]')
             expect((checkbox.element as HTMLInputElement).checked).toBe(true)
-            
+
             const checkbox2 = wrapper.find('input[type="checkbox"][value="tool2"]')
             expect((checkbox2.element as HTMLInputElement).checked).toBe(false)
         })
 
         it('should sync tools from checkboxes to frontmatter', async () => {
             const wrapper = mount(ChatPanel, mountOptions)
-            
+
             // Open control panel
             await wrapper.find('.chat-header__control[title="控制面板"]').trigger('click')
-            
+
             // Switch to skills tab
             const tabs = wrapper.findAll('.chat-control__tab')
             const skillsTab = tabs.find(t => t.text() === 'Skills')
             await skillsTab?.trigger('click')
-            
+
             await wrapper.find('.chat-skills__add').trigger('click')
-            
+
             const checkbox = wrapper.find('input[type="checkbox"][value="tool2"]')
             await checkbox.setValue(true)
-            
+
             await nextTick()
-            
+
             const textarea = wrapper.find('.chat-skills__textarea')
             expect((textarea.element as HTMLTextAreaElement).value).toContain('tools: tool2')
         })
