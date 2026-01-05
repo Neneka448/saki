@@ -501,7 +501,7 @@ export const sendChatWithTools = async (options: ChatRequestOptions) => {
       toolPayloads.push(toolPayload)
       toolMessages.push(createMessage('assistant', '', 'tool_call', toolPayload))
     }
-    
+
     if (toolPayloads.length === 0) {
       break
     }
