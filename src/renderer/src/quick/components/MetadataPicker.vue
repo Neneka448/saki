@@ -118,7 +118,8 @@ const handleInputKeydown = (event: KeyboardEvent) => {
 
 const handleOutsideClick = (event: MouseEvent) => {
   if (!isOpen.value) return
-  const target = event.target as Node
+  const target = event.target as Node | null
+  if (!target) return
   if (dropdownRef.value?.contains(target)) return
   if (triggerRef.value?.contains(target)) return
   closeDropdown()

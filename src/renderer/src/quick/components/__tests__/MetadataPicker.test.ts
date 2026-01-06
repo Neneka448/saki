@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import MetadataPicker from '../MetadataPicker.vue'
 
@@ -7,10 +7,6 @@ describe('MetadataPicker', () => {
     modelValue: {},
     disabled: false,
   }
-
-  beforeEach(() => {
-    // Reset DOM for each test
-  })
 
   it('should render metadata picker trigger button', () => {
     const wrapper = mount(MetadataPicker, { props: defaultProps })
