@@ -138,7 +138,8 @@ onBeforeUnmount(() => {
         v-if="modelValue.sourceUrl"
         type="button"
         class="metadata-chip"
-        @click="!disabled && removeUrl()"
+        :disabled="disabled"
+        @click="removeUrl"
       >
         <span class="metadata-chip__icon">🔗</span>
         <span class="metadata-chip__label">{{ modelValue.sourceUrl }}</span>
@@ -148,7 +149,8 @@ onBeforeUnmount(() => {
         v-if="modelValue.sourcePath"
         type="button"
         class="metadata-chip"
-        @click="!disabled && removePath()"
+        :disabled="disabled"
+        @click="removePath"
       >
         <span class="metadata-chip__icon">📁</span>
         <span class="metadata-chip__label">{{ modelValue.sourcePath }}</span>
@@ -267,6 +269,16 @@ onBeforeUnmount(() => {
 .metadata-chip:hover {
   background: rgba(255, 255, 255, 0.8);
   border-color: rgba(0, 0, 0, 0.1);
+}
+
+.metadata-chip:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.metadata-chip:disabled:hover {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(0, 0, 0, 0.06);
 }
 
 .metadata-chip__icon {
