@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { keymap } from '@codemirror/view'
 import { CodeMirrorEditor } from '../editor'
 import TagPicker from './components/TagPicker.vue'
+import MetadataPicker, { type MetadataFields } from './components/MetadataPicker.vue'
 import MarkdownRenderer from '../components/card/MarkdownRenderer.vue'
 import type { CardListItem, Project, TagWithMeta } from '../../../shared/ipc/types'
 import { normalizeCardReferences } from '../utils/referenceUtils'
@@ -14,6 +15,7 @@ const project = ref<Project | null>(null)
 const allTags = ref<TagWithMeta[]>([])
 const referenceCandidates = ref<CardListItem[]>([])
 const selectedTagIds = ref<number[]>([])
+const metadata = ref<MetadataFields>({})
 const content = ref('')
 const isLoading = ref(false)
 const isSaving = ref(false)
@@ -88,6 +90,7 @@ const applyProjectId = async (projectId: number | null) => {
     loadError.value = ''
     content.value = ''
     selectedTagIds.value = []
+    metadata.value = {}
     lastProjectId.value = null
     return
   }
@@ -95,6 +98,7 @@ const applyProjectId = async (projectId: number | null) => {
   if (projectId !== lastProjectId.value) {
     content.value = ''
     selectedTagIds.value = []
+    metadata.value = {}
   }
   lastProjectId.value = projectId
   await loadProjectContext(projectId)
@@ -128,9 +132,19 @@ const saveCard = async () => {
 
   isSaving.value = true
   try {
+    // Prepare metadata with source information
+    const metaExtra: Record<string, unknown> = {}
+    if (metadata.value.sourceUrl) {
+      metaExtra.sourceUrl = metadata.value.sourceUrl
+    }
+    if (metadata.value.sourcePath) {
+      metaExtra.sourcePath = metadata.value.sourcePath
+    }
+
     const result = await window.card.create({
       projectId: activeProjectId.value,
       content: normalizedContent,
+      meta: Object.keys(metaExtra).length > 0 ? { extra: metaExtra } : undefined,
     })
 
     if (!result.success) {
@@ -147,6 +161,7 @@ const saveCard = async () => {
 
     content.value = ''
     selectedTagIds.value = []
+    metadata.value = {}
     requestClose()
   } catch (e) {
     console.error('Failed to save quick capture card:', e)
@@ -320,6 +335,10 @@ onBeforeUnmount(() => {
             :tags="allTags"
             :disabled="!activeProjectId || isLoading"
             @create="handleCreateTag"
+          />
+          <MetadataPicker
+            v-model="metadata"
+            :disabled="!activeProjectId || isLoading"
           />
         </div>
         
