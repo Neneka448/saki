@@ -21,7 +21,8 @@ const tempUrl = ref('')
 const tempPath = ref('')
 const dropdownRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLButtonElement | null>(null)
-const inputRef = ref<HTMLInputElement | null>(null)
+const urlInputRef = ref<HTMLInputElement | null>(null)
+const pathInputRef = ref<HTMLInputElement | null>(null)
 
 const hasMetadata = computed(() => Boolean(props.modelValue.sourceUrl || props.modelValue.sourcePath))
 const metadataCount = computed(() => {
@@ -55,13 +56,13 @@ const toggleDropdown = () => {
 const startEditUrl = async () => {
   editingField.value = 'url'
   await nextTick()
-  inputRef.value?.focus()
+  urlInputRef.value?.focus()
 }
 
 const startEditPath = async () => {
   editingField.value = 'path'
   await nextTick()
-  inputRef.value?.focus()
+  pathInputRef.value?.focus()
 }
 
 const saveUrl = () => {
@@ -184,7 +185,7 @@ onBeforeUnmount(() => {
         </div>
         <div v-else class="metadata-picker__input-wrapper">
           <input
-            ref="inputRef"
+            ref="urlInputRef"
             v-model="tempUrl"
             type="text"
             class="metadata-picker__input"
@@ -213,7 +214,7 @@ onBeforeUnmount(() => {
         </div>
         <div v-else class="metadata-picker__input-wrapper">
           <input
-            ref="inputRef"
+            ref="pathInputRef"
             v-model="tempPath"
             type="text"
             class="metadata-picker__input"
