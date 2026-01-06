@@ -742,7 +742,12 @@ watch(tagEditColor, () => {
               </div>
               <p v-if="card.summary" class="card-item__summary">{{ card.summary }}</p>
               <div class="card-item__footer">
-                <span v-if="card.wordCount" class="card-item__meta">
+                <span v-if="card.extra?.sourceUrl || card.extra?.sourcePath" class="card-item__source-tag" title="包含来源信息">
+                  <template v-if="card.extra.sourceUrl">🔗</template>
+                  <template v-else-if="card.extra.sourcePath">📁</template>
+                  来源
+                </span>
+                <span v-if="card.wordCount" class="card-item__word-count">
                   {{ card.wordCount }} 字
                 </span>
               </div>
@@ -1142,6 +1147,7 @@ watch(tagEditColor, () => {
   cursor: pointer;
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .card-item:hover {
@@ -1196,11 +1202,28 @@ watch(tagEditColor, () => {
   display: flex;
   align-items: center;
   gap: 8px;
+  position: relative;
 }
 
-.card-item__meta {
-  font-size: 11px;
+.card-item__word-count {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  font-size: 10px;
   color: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+.card-item__source-tag {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.8;
 }
 
 .card-item__tags {

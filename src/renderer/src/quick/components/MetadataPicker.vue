@@ -137,40 +137,60 @@ onBeforeUnmount(() => {
 <template>
   <div class="metadata-picker">
     <div v-if="hasMetadata" class="metadata-picker__selected">
-      <button
+      <div
         v-if="modelValue.sourceUrl"
-        type="button"
         class="metadata-chip"
-        :disabled="disabled"
-        :aria-label="`移除来源链接: ${modelValue.sourceUrl}`"
-        @click="removeUrl"
+        :title="modelValue.sourceUrl"
       >
         <span class="metadata-chip__icon">🔗</span>
         <span class="metadata-chip__label">{{ modelValue.sourceUrl }}</span>
-        <span class="metadata-chip__remove">x</span>
-      </button>
-      <button
+        <button
+          type="button"
+          class="metadata-chip__remove"
+          :disabled="disabled"
+          @click.stop="removeUrl"
+        >
+          ×
+        </button>
+      </div>
+      <div
         v-if="modelValue.sourcePath"
-        type="button"
         class="metadata-chip"
-        :disabled="disabled"
-        :aria-label="`移除文件路径: ${modelValue.sourcePath}`"
-        @click="removePath"
+        :title="modelValue.sourcePath"
       >
         <span class="metadata-chip__icon">📁</span>
         <span class="metadata-chip__label">{{ modelValue.sourcePath }}</span>
-        <span class="metadata-chip__remove">x</span>
-      </button>
+        <button
+          type="button"
+          class="metadata-chip__remove"
+          :disabled="disabled"
+          @click.stop="removePath"
+        >
+          ×
+        </button>
+      </div>
     </div>
 
     <button
+      v-if="!hasMetadata"
       ref="triggerRef"
       type="button"
       class="metadata-picker__trigger"
       :disabled="disabled"
       @click="toggleDropdown"
     >
-      + 元信息{{ metadataCount > 0 ? ` (${metadataCount})` : '' }}
+      + 元信息
+    </button>
+    <button
+      v-else
+      ref="triggerRef"
+      type="button"
+      class="metadata-picker__add-more"
+      :disabled="disabled"
+      @click="toggleDropdown"
+      title="修改元信息"
+    >
+      +
     </button>
 
     <div v-if="isOpen" ref="dropdownRef" class="metadata-picker__dropdown">
@@ -242,15 +262,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .metadata-picker {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   position: relative;
 }
 
 .metadata-picker__selected {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
@@ -267,23 +285,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--color-text);
   transition: all 0.2s;
-  cursor: pointer;
-  max-width: 300px;
-}
-
-.metadata-chip:hover {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(0, 0, 0, 0.1);
-}
-
-.metadata-chip:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.metadata-chip:disabled:hover {
-  background: rgba(255, 255, 255, 0.6);
-  border-color: rgba(0, 0, 0, 0.06);
+  max-width: 140px;
 }
 
 .metadata-chip__icon {
@@ -298,14 +300,21 @@ onBeforeUnmount(() => {
 }
 
 .metadata-chip__remove {
+  background: transparent;
+  border: none;
   font-weight: 600;
   color: var(--color-text-muted);
   opacity: 0.6;
   flex-shrink: 0;
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .metadata-chip:hover .metadata-chip__remove {
   opacity: 1;
+  color: #ef4444;
 }
 
 .metadata-picker__trigger {
@@ -326,15 +335,30 @@ onBeforeUnmount(() => {
   border-color: rgba(0, 0, 0, 0.1);
 }
 
-.metadata-picker__trigger:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.metadata-picker__add-more {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.metadata-picker__add-more:hover {
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--color-primary);
 }
 
 .metadata-picker__dropdown {
   position: absolute;
-  bottom: calc(100% + 8px);
-  top: auto;
+  top: calc(100% + 8px);
   left: 0;
   min-width: 320px;
   max-width: 420px;
@@ -346,14 +370,14 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-lg);
   padding: 12px;
   z-index: 100;
-  transform-origin: bottom left;
-  animation: slideUp 0.2s ease-out;
+  transform-origin: top left;
+  animation: slideDown 0.2s ease-out;
 }
 
-@keyframes slideUp {
+@keyframes slideDown {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(-8px) scale(0.98);
   }
   to {
     opacity: 1;

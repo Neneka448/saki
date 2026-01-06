@@ -23,6 +23,29 @@ function extractTitle(content: string): string {
 }
 
 /**
+ * 提取摘要
+ */
+function extractSummary(content: string, length = 100): string {
+    const lines = content.split('\n')
+    // 如果第一行是标题，取后面的内容
+    const firstLine = lines[0].trim()
+    const isHeader = firstLine.startsWith('#')
+    let body = isHeader ? lines.slice(1).join(' ').trim() : content.trim()
+    
+    // 移除 markdown 标记
+    body = body
+        .replace(/[#*`_~]/g, '')
+        .replace(/!\[.*?\]\(.*?\)/g, '[图片]')
+        .replace(/\[.*?\]\(.*?\)/g, (match) => {
+            const label = match.match(/\[(.*?)\]/)
+            return label ? label[1] : match
+        })
+        .replace(/\s+/g, ' ')
+
+    return body.slice(0, length)
+}
+
+/**
  * Drizzle 实现的卡片仓储
  */
 export class DrizzleCardRepository implements ICardRepository {
@@ -50,7 +73,7 @@ export class DrizzleCardRepository implements ICardRepository {
             .values({
                 cardId: card.id,
                 title: input.meta?.title ?? defaultTitle,
-                summary: input.meta?.summary ?? null,
+                summary: input.meta?.summary ?? extractSummary(input.content),
                 wordCount: countWords(input.content),
                 extra: input.meta?.extra ?? null,
             })
@@ -130,7 +153,7 @@ export class DrizzleCardRepository implements ICardRepository {
         // 更新时保留现有标题，除非明确传入新标题
         const metaValues = {
             title: input.meta?.title ?? existingMeta?.title ?? `卡片 ${id}`,
-            summary: input.meta?.summary ?? existingMeta?.summary ?? null,
+            summary: input.meta?.summary ?? extractSummary(input.content),
             wordCount: countWords(input.content),
             extra: input.meta?.extra ?? existingMeta?.extra ?? null,
         }

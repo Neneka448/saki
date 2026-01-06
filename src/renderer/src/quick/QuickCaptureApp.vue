@@ -256,9 +256,15 @@ onBeforeUnmount(() => {
   <div class="quick-capture-window">
     <!-- 拖拽区域 & 顶部状态 -->
     <div class="window-drag-handle">
-      <div v-if="project" class="project-badge">
-        <span class="project-dot"></span>
-        {{ project.name }}
+      <div v-if="project" class="header-left">
+        <div class="project-badge">
+          <span class="project-dot"></span>
+          {{ project.name }}
+        </div>
+        <MetadataPicker
+          v-model="metadata"
+          :disabled="!activeProjectId || isLoading"
+        />
       </div>
       <div class="window-actions">
         <button 
@@ -336,10 +342,6 @@ onBeforeUnmount(() => {
             :disabled="!activeProjectId || isLoading"
             @create="handleCreateTag"
           />
-          <MetadataPicker
-            v-model="metadata"
-            :disabled="!activeProjectId || isLoading"
-          />
         </div>
         
         <div class="primary-actions">
@@ -400,6 +402,17 @@ onBeforeUnmount(() => {
   padding: 4px 10px;
   border-radius: 12px;
   border: 1px solid rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
 }
 
 .project-dot {

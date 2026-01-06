@@ -53,6 +53,8 @@ const autoSaveTimer = ref<number | null>(null)
 const autoSaveDelay = 800
 const tagSyncMessage = ref('')
 const tagSyncMessageTimer = ref<number | null>(null)
+const editSourceUrl = ref('')
+const editSourcePath = ref('')
 
 // 是否是新建模式
 const activeCardId = computed(() => props.cardId ?? card.value?.id ?? null)
@@ -99,7 +101,9 @@ const hasUnsavedChanges = computed(() => {
   if (!trimmed) return false
   const contentChanged = content.value !== lastSavedContent.value
   const titleChanged = cardTitle.value !== lastSavedTitle.value
-  return contentChanged || titleChanged
+  const urlChanged = editSourceUrl.value !== (card.value?.extra?.sourceUrl || '')
+  const pathChanged = editSourcePath.value !== (card.value?.extra?.sourcePath || '')
+  return contentChanged || titleChanged || urlChanged || pathChanged
 })
 const saveStatusText = computed(() => {
   if (isSaving.value) return '保存中...'
@@ -142,6 +146,17 @@ const cancelEditTitle = () => {
   isEditingTitle.value = false
 }
 
+// 复制到剪贴板
+const copyToClipboard = async (text: string) => {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    showTagSyncMessage('复制成功')
+  } catch (err) {
+    console.error('Failed to copy: ', err)
+  }
+}
+
 // 处理标题输入框按键
 const handleTitleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter') {
@@ -178,6 +193,8 @@ const loadCard = async () => {
       card.value = result.data
       content.value = result.data.content
       cardTitle.value = result.data.title || `卡片 ${result.data.id}`
+      editSourceUrl.value = String(result.data.extra?.sourceUrl || '')
+      editSourcePath.value = String(result.data.extra?.sourcePath || '')
       lastSavedContent.value = result.data.content
       lastSavedTitle.value = cardTitle.value
       lastSavedAt.value = new Date(result.data.updatedAt).getTime()
@@ -418,11 +435,13 @@ const saveCard = async () => {
     return
   }
 
-  // 检查是否只有标题变化，没有内容变化
+  // 检查是否只有标题或元信息变化
   const contentChanged = normalizedContent !== lastSavedContent.value
   const titleChanged = cardTitle.value !== lastSavedTitle.value
+  const urlChanged = editSourceUrl.value !== (card.value?.extra?.sourceUrl || '')
+  const pathChanged = editSourcePath.value !== (card.value?.extra?.sourcePath || '')
   
-  if (!contentChanged && !titleChanged) return
+  if (!contentChanged && !titleChanged && !urlChanged && !pathChanged) return
 
   if (autoSaveTimer.value) {
     window.clearTimeout(autoSaveTimer.value)
@@ -432,9 +451,19 @@ const saveCard = async () => {
   isSaving.value = true
   try {
     let result
+    const metaExtra = {
+      ...(card.value?.extra || {}),
+      sourceUrl: editSourceUrl.value || undefined,
+      sourcePath: editSourcePath.value || undefined,
+    }
+
     if (isNew.value) {
       // 创建新卡片
-      result = await window.card.create({ projectId: props.projectId, content: normalizedContent })
+      result = await window.card.create({ 
+        projectId: props.projectId, 
+        content: normalizedContent,
+        meta: { extra: metaExtra } 
+      })
     } else {
       // 更新卡片
       const cardId = activeCardId.value
@@ -442,7 +471,10 @@ const saveCard = async () => {
       result = await window.card.update({ 
         id: cardId, 
         content: normalizedContent,
-        meta: { title: cardTitle.value }
+        meta: { 
+          title: cardTitle.value,
+          extra: metaExtra
+        }
       })
     }
 
@@ -622,6 +654,54 @@ onBeforeUnmount(() => {
 
     <div v-if="saveError" class="card-edit-view__error">
       {{ saveError }}
+    </div>
+
+    <!-- 元信息展示与编辑 -->
+    <div v-if="(card?.extra || isEditing) && (card?.extra?.sourceUrl || card?.extra?.sourcePath || isEditing)" class="card-edit-view__meta">
+      <div class="card-edit-view__meta-item">
+        <span class="card-edit-view__meta-icon">🔗</span>
+        <template v-if="isEditing">
+          <input
+            v-model="editSourceUrl"
+            class="card-edit-view__meta-input"
+            type="text"
+            placeholder="添加来源链接..."
+            @blur="scheduleAutoSave"
+          />
+        </template>
+        <template v-else-if="card?.extra?.sourceUrl">
+          <span class="card-edit-view__meta-label">来源:</span>
+          <span 
+            class="card-edit-view__meta-value card-edit-view__meta-value--copyable" 
+            title="点击复制"
+            @click="copyToClipboard(String(card.extra.sourceUrl))"
+          >
+            {{ card.extra.sourceUrl }}
+          </span>
+        </template>
+      </div>
+      <div class="card-edit-view__meta-item">
+        <span class="card-edit-view__meta-icon">📁</span>
+        <template v-if="isEditing">
+          <input
+            v-model="editSourcePath"
+            class="card-edit-view__meta-input"
+            type="text"
+            placeholder="添加文件路径..."
+            @blur="scheduleAutoSave"
+          />
+        </template>
+        <template v-else-if="card?.extra?.sourcePath">
+          <span class="card-edit-view__meta-label">路径:</span>
+          <span 
+            class="card-edit-view__meta-value card-edit-view__meta-value--copyable" 
+            title="点击复制"
+            @click="copyToClipboard(String(card.extra.sourcePath))"
+          >
+            {{ card.extra.sourcePath }}
+          </span>
+        </template>
+      </div>
     </div>
 
     <!-- 标签同步提示 -->
@@ -805,6 +885,74 @@ onBeforeUnmount(() => {
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.8));
+}
+
+.card-edit-view__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 16px;
+  background: rgba(58, 109, 246, 0.04);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.card-edit-view__meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  min-width: 0;
+}
+
+.card-edit-view__meta-icon {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.card-edit-view__meta-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.card-edit-view__meta-value {
+  color: var(--color-text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.card-edit-view__meta-value--copyable {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.card-edit-view__meta-value--copyable:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.card-edit-view__meta-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--color-border);
+  font-size: 11px;
+  color: var(--color-text);
+  padding: 0 4px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.card-edit-view__meta-input:focus {
+  border-bottom-color: var(--color-primary);
+}
+
+.card-edit-view__meta-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.6;
 }
 
 .card-edit-view__error {
