@@ -86,6 +86,36 @@ export const appBridge = {
     return ipcRenderer.invoke(channels.app.resetQuickCaptureShortcut)
   },
   /**
+   * 选择文件夹（用于 Live2D 模型导入等）
+   */
+  selectFolder: (): Promise<string | null> => {
+    return ipcRenderer.invoke(channels.app.selectFolder)
+  },
+  /**
+   * 读取本地文件内容
+   */
+  readFile: (filePath: string): Promise<{ success: boolean; data?: string; error?: string }> => {
+    return ipcRenderer.invoke(channels.app.readFile, filePath)
+  },
+  /**
+   * 打开 Live2D 窗口
+   */
+  showLive2D: (): Promise<boolean> => {
+    return ipcRenderer.invoke(channels.app.showLive2D)
+  },
+  /**
+   * 设置鼠标事件穿透（用于 Live2D 透明窗口）
+   */
+  setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }): Promise<boolean> => {
+    return ipcRenderer.invoke(channels.app.setIgnoreMouseEvents, ignore, options)
+  },
+  /**
+   * 移动窗口（用于拖动）
+   */
+  moveWindow: (deltaX: number, deltaY: number): Promise<boolean> => {
+    return ipcRenderer.invoke(channels.app.moveWindow, deltaX, deltaY)
+  },
+  /**
    * 剪贴板操作 - 读取文本
    */
   clipboardReadText: (): string => {

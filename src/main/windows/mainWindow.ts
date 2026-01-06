@@ -10,7 +10,8 @@ export const createMainWindow = () => {
       preload: path.join(__dirname, '..', '..', 'preload', 'index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      webSecurity: false, // 允许加载本地 Live2D 模型文件
     }
   })
 

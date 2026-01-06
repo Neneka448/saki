@@ -12,6 +12,12 @@ const props = defineProps<{
   projectId: number
 }>()
 
+// 打开 Live2D 独立窗口
+function openLive2DWindow() {
+  // @ts-ignore - window.app 是 preload 注入的
+  window.app?.showLive2D?.()
+}
+
 type WorkspaceTab = 'timeline' | 'tags'
 
 const activeTab = ref<WorkspaceTab>('timeline')
@@ -610,6 +616,16 @@ watch(tagEditColor, () => {
           </button>
         </div>
         <div class="workspace-header__actions">
+          <button 
+            class="workspace-header__icon-btn"
+            title="Live2D 角色"
+            @click="openLive2DWindow"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+            </svg>
+          </button>
           <button 
             v-if="!isTagView"
             class="workspace-header__icon-btn"

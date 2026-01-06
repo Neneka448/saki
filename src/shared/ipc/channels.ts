@@ -17,6 +17,11 @@ export const channels = {
     getQuickCaptureShortcut: 'app:getQuickCaptureShortcut',
     setQuickCaptureShortcut: 'app:setQuickCaptureShortcut',
     resetQuickCaptureShortcut: 'app:resetQuickCaptureShortcut',
+    selectFolder: 'app:selectFolder',
+    readFile: 'app:readFile',
+    showLive2D: 'app:showLive2D',
+    setIgnoreMouseEvents: 'app:setIgnoreMouseEvents',
+    moveWindow: 'app:moveWindow',
   },
 
   // 项目相关
