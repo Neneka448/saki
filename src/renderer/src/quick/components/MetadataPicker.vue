@@ -84,6 +84,7 @@ const savePath = () => {
 }
 
 const removeUrl = () => {
+  if (props.disabled) return
   emit('update:modelValue', {
     ...props.modelValue,
     sourceUrl: undefined,
@@ -92,6 +93,7 @@ const removeUrl = () => {
 }
 
 const removePath = () => {
+  if (props.disabled) return
   emit('update:modelValue', {
     ...props.modelValue,
     sourcePath: undefined,
@@ -139,6 +141,7 @@ onBeforeUnmount(() => {
         type="button"
         class="metadata-chip"
         :disabled="disabled"
+        :aria-label="`移除来源链接: ${modelValue.sourceUrl}`"
         @click="removeUrl"
       >
         <span class="metadata-chip__icon">🔗</span>
@@ -150,6 +153,7 @@ onBeforeUnmount(() => {
         type="button"
         class="metadata-chip"
         :disabled="disabled"
+        :aria-label="`移除文件路径: ${modelValue.sourcePath}`"
         @click="removePath"
       >
         <span class="metadata-chip__icon">📁</span>
