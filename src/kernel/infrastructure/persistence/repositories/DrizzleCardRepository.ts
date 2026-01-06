@@ -31,7 +31,7 @@ function extractSummary(content: string, length = 100): string {
     const firstLine = lines[0].trim()
     const isHeader = firstLine.startsWith('#')
     let body = isHeader ? lines.slice(1).join(' ').trim() : content.trim()
-    
+
     // 移除 markdown 标记
     body = body
         .replace(/[#*`_~]/g, '')
