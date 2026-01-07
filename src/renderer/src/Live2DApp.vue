@@ -41,6 +41,9 @@ onMounted(async () => {
     controller.value = new Live2DController()
     await controller.value.initialize(canvasRef.value)
     
+    // 等待模型管理器初始化（扫描内部模型）
+    await live2DModelManager.waitInitialized()
+    
     // 自动加载第一个模型
     const modelList = live2DModelManager.getModels()
     if (modelList.length > 0) {

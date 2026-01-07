@@ -19,6 +19,7 @@ export const channels = {
     resetQuickCaptureShortcut: 'app:resetQuickCaptureShortcut',
     selectFolder: 'app:selectFolder',
     readFile: 'app:readFile',
+    scanInternalModels: 'app:scanInternalModels',
     showLive2D: 'app:showLive2D',
     setIgnoreMouseEvents: 'app:setIgnoreMouseEvents',
     moveWindow: 'app:moveWindow',

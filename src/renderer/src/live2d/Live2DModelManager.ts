@@ -47,9 +47,21 @@ function generateId(): string {
  */
 export class Live2DModelManager {
     private models: Live2DModelAsset[] = []
+    private initPromise: Promise<void> | null = null
 
     constructor() {
         this.loadFromStorage()
+        // 启动时自动扫描内部模型
+        this.initPromise = this.scanAndImportInternalModels()
+    }
+
+    /**
+     * 等待管理器完成初始化（如扫描内部模型）
+     */
+    async waitInitialized(): Promise<void> {
+        if (this.initPromise) {
+            await this.initPromise
+        }
     }
 
     /**
@@ -195,6 +207,34 @@ export class Live2DModelManager {
     clearAll(): void {
         this.models = []
         this.saveToStorage()
+    }
+
+    /**
+     * 扫描并自动导入内部资产目录下的模型
+     */
+    async scanAndImportInternalModels(): Promise<void> {
+        try {
+            // @ts-ignore
+            const folders = await window.app?.scanInternalModels?.()
+            if (!folders || folders.length === 0) {
+                return
+            }
+
+            let importedCount = 0
+            for (const folder of folders) {
+                // 自动导入
+                const asset = await this.importModel(folder)
+                if (asset) {
+                    importedCount++
+                }
+            }
+
+            if (importedCount > 0) {
+                console.log(`[Live2DModelManager] Automatically imported ${importedCount} internal models`)
+            }
+        } catch (error) {
+            console.error('[Live2DModelManager] Failed to scan internal models:', error)
+        }
     }
 }
 

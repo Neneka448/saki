@@ -53,6 +53,8 @@ const selectedModel = computed(() => {
 
 // 初始化
 onMounted(async () => {
+  // 等待管理器加载，然后初始化列表
+  await live2DModelManager.waitInitialized()
   loadModels()
 
   if (canvasRef.value) {
@@ -62,6 +64,12 @@ onMounted(async () => {
 
     if (!success) {
       errorMessage.value = 'Live2D 初始化失败，请检查依赖是否正确安装'
+    } else {
+      // 如果有模型，默认选中第一个
+      if (models.value.length > 0 && !selectedModelId.value) {
+        selectedModelId.value = models.value[0].id
+        await loadSelectedModel()
+      }
     }
   }
 

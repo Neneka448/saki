@@ -98,6 +98,12 @@ export const appBridge = {
     return ipcRenderer.invoke(channels.app.readFile, filePath)
   },
   /**
+   * 扫描内部 Live2D 模型
+   */
+  scanInternalModels: (): Promise<string[]> => {
+    return ipcRenderer.invoke(channels.app.scanInternalModels)
+  },
+  /**
    * 打开 Live2D 窗口
    */
   showLive2D: (): Promise<boolean> => {

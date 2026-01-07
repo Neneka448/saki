@@ -1,5 +1,6 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import * as fs from 'fs'
+import * as path from 'path'
 import { channels } from '../../../shared/ipc/channels'
 import { appState } from '../../state/appState'
 import { getAppSettings } from '../../state/appSettings'
@@ -82,6 +83,53 @@ export function registerAppHandlers(): void {
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
+  })
+
+  ipcMain.handle(channels.app.scanInternalModels, async () => {
+    const isDev = Boolean(process.env.VITE_DEV_SERVER_URL) || process.env.NODE_ENV === 'development'
+    const appPath = app.getAppPath()
+
+    // 内部模型路径
+    const internalPath = isDev
+      ? path.join(appPath, 'src/renderer/public/assets/live2d')
+      : path.join(appPath, 'dist/renderer/assets/live2d')
+
+    if (!fs.existsSync(internalPath)) {
+      console.log('[AppHandlers] Internal models path not found:', internalPath)
+      return []
+    }
+
+    const modelFolders: string[] = []
+
+    // 递归查找所有 model.json
+    function findModels(currentPath: string) {
+      const items = fs.readdirSync(currentPath)
+      for (const item of items) {
+        if (item === 'node_modules' || item === '.git') continue
+
+        const fullPath = path.join(currentPath, item)
+        const stat = fs.statSync(fullPath)
+
+        if (stat.isDirectory()) {
+          // 检查文件夹下是否有 model.json
+          if (fs.existsSync(path.join(fullPath, 'model.json'))) {
+            modelFolders.push(fullPath)
+          } else {
+            // 继续递归
+            findModels(fullPath)
+          }
+        }
+      }
+    }
+
+    try {
+      findModels(internalPath)
+      console.log(`[AppHandlers] Scanned ${modelFolders.length} internal models`)
+    } catch (error) {
+      console.error('[AppHandlers] Failed to scan internal models:', error)
+    }
+
+    return modelFolders
   })
 
   ipcMain.handle(channels.app.showLive2D, () => {
