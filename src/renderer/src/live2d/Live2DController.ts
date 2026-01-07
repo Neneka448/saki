@@ -71,9 +71,10 @@ export class Live2DController {
 
     /**
      * 加载 Live2D 模型
-     * @param modelJsonPath model.json 的完整路径
+     * @param modelJsonPath model.json 的完整路径（内置模型为相对路径，用户导入模型为绝对路径）
+     * @param isBuiltin 是否为内置模型
      */
-    async loadModel(modelJsonPath: string): Promise<boolean> {
+    async loadModel(modelJsonPath: string, isBuiltin = false): Promise<boolean> {
         if (!this.app || !live2DCore.isAvailable) {
             console.error('[Live2DController] Not initialized or Live2D not available')
             return false
@@ -87,10 +88,17 @@ export class Live2DController {
                 this.model = null
             }
 
-            // 使用 file:// 协议加载本地文件
-            const modelUrl = modelJsonPath.startsWith('file://')
-                ? modelJsonPath
-                : `file://${modelJsonPath}`
+            // 内置模型使用相对路径，用户导入模型使用 file:// 协议
+            let modelUrl: string
+            if (isBuiltin) {
+                // 内置模型直接使用相对路径
+                modelUrl = modelJsonPath
+            } else {
+                // 用户导入模型使用 file:// 协议
+                modelUrl = modelJsonPath.startsWith('file://')
+                    ? modelJsonPath
+                    : `file://${modelJsonPath}`
+            }
 
             // 加载新模型
             this.model = await live2DCore.Live2DModel.from(modelUrl, {

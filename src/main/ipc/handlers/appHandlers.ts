@@ -133,8 +133,14 @@ export function registerAppHandlers(): void {
   })
 
   ipcMain.handle(channels.app.showLive2D, () => {
-    showLive2DWindow()
-    return true
+    console.log('[IPC] showLive2D handler called')
+    try {
+      showLive2DWindow()
+      return true
+    } catch (error) {
+      console.error('[IPC] showLive2D error:', error)
+      return false
+    }
   })
 
   // 设置鼠标事件穿透（用于 Live2D 透明窗口）

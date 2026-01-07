@@ -7,6 +7,21 @@ import type { Live2DModelAsset, Live2DModelConfig } from './types'
 
 const STORAGE_KEY = 'saki.live2d.models'
 
+// 内置模型配置
+// 注意：motions 和 expressions 数组为空，因为这些会在模型加载时从 model.json 动态解析
+const BUILTIN_MODELS: Live2DModelAsset[] = [
+    {
+        id: 'builtin-sakiko-casual',
+        name: 'Sakiko (Casual)',
+        folderPath: 'assets/live2d/sakiko/casual',
+        modelJsonPath: 'assets/live2d/sakiko/casual/model.json',
+        motions: [],
+        expressions: [],
+        createdAt: 0,
+        isBuiltin: true
+    }
+]
+
 /**
  * 解析 model.json 文件，提取动作和表情列表
  */
@@ -48,8 +63,10 @@ function generateId(): string {
 export class Live2DModelManager {
     private models: Live2DModelAsset[] = []
     private initPromise: Promise<void> | null = null
+    private builtinModels: Live2DModelAsset[] = []
 
     constructor() {
+        this.loadBuiltinModels()
         this.loadFromStorage()
         // 启动时自动扫描内部模型
         this.initPromise = this.scanAndImportInternalModels()
@@ -62,6 +79,14 @@ export class Live2DModelManager {
         if (this.initPromise) {
             await this.initPromise
         }
+    }
+
+    /**
+     * 加载内置模型
+     */
+    private loadBuiltinModels(): void {
+        this.builtinModels = [...BUILTIN_MODELS]
+        console.log('[Live2DModelManager] Loaded builtin models:', this.builtinModels.length)
     }
 
     /**
@@ -154,17 +179,18 @@ export class Live2DModelManager {
     }
 
     /**
-     * 获取所有已导入的模型
+     * 获取所有已导入的模型（包括内置模型）
      */
     getModels(): Live2DModelAsset[] {
-        return [...this.models]
+        return [...this.builtinModels, ...this.models]
     }
 
     /**
      * 根据ID获取模型
+     * 注意：内置模型优先于用户模型，避免用户使用以 'builtin-' 开头的 ID
      */
     getModelById(id: string): Live2DModelAsset | undefined {
-        return this.models.find((m) => m.id === id)
+        return this.builtinModels.find((m) => m.id === id) || this.models.find((m) => m.id === id)
     }
 
     /**
