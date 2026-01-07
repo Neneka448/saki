@@ -123,7 +123,7 @@ async function loadSelectedModel() {
   errorMessage.value = ''
 
   try {
-    const success = await controller.value.loadModel(selectedModel.value.modelJsonPath)
+    const success = await controller.value.loadModel(selectedModel.value.modelJsonPath, selectedModel.value.isBuiltin)
     if (success) {
       motionList.value = controller.value.getMotionList()
       expressionList.value = controller.value.getExpressionList()
