@@ -13,9 +13,17 @@ const props = defineProps<{
 }>()
 
 // 打开 Live2D 独立窗口
-function openLive2DWindow() {
-  // @ts-ignore - window.app 是 preload 注入的
-  window.app?.showLive2D?.()
+async function openLive2DWindow() {
+  try {
+    // @ts-ignore - window.app 是 preload 注入的
+    if (!window.app?.showLive2D) {
+      console.warn('[Live2D] showLive2D API not available yet')
+      return
+    }
+    await window.app.showLive2D()
+  } catch (error) {
+    console.error('[Live2D] Failed to open Live2D window:', error)
+  }
 }
 
 type WorkspaceTab = 'timeline' | 'tags'

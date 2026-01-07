@@ -74,6 +74,7 @@ export interface Live2DModelAsset {
     expressions: string[]   // 可用表情列表
     thumbnail?: string      // 缩略图路径 (可选)
     createdAt: number       // 导入时间戳
+    isBuiltin?: boolean     // 是否为内置模型
 }
 
 /** Live2D 控制器状态 */

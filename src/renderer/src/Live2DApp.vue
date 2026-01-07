@@ -45,7 +45,7 @@ onMounted(async () => {
     const modelList = live2DModelManager.getModels()
     if (modelList.length > 0) {
       selectedModelId.value = modelList[0].id
-      await loadModel(modelList[0].modelJsonPath)
+      await loadModel(modelList[0].modelJsonPath, modelList[0].isBuiltin)
     }
   }
 
@@ -61,10 +61,10 @@ function handleResize() {
   controller.value?.resize()
 }
 
-async function loadModel(modelJsonPath: string) {
+async function loadModel(modelJsonPath: string, isBuiltin = false) {
   if (!controller.value) return
   isLoading.value = true
-  await controller.value.loadModel(modelJsonPath)
+  await controller.value.loadModel(modelJsonPath, isBuiltin)
   isLoading.value = false
 }
 
@@ -89,7 +89,7 @@ async function importModel() {
   const asset = await live2DModelManager.importModel(folderPath)
   if (asset) {
     selectedModelId.value = asset.id
-    await loadModel(asset.modelJsonPath)
+    await loadModel(asset.modelJsonPath, asset.isBuiltin)
   }
 }
 
@@ -99,7 +99,7 @@ async function selectModel(id: string) {
   const model = models.value.find(m => m.id === id)
   if (model) {
     selectedModelId.value = id
-    await loadModel(model.modelJsonPath)
+    await loadModel(model.modelJsonPath, model.isBuiltin)
   }
 }
 
