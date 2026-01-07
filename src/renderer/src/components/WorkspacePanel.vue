@@ -17,7 +17,7 @@ async function openLive2DWindow() {
   try {
     // @ts-ignore - window.app 是 preload 注入的
     if (!window.app?.showLive2D) {
-      console.warn('[Live2D] showLive2D API not available yet')
+      console.warn('[Live2D] showLive2D API not initialized')
       return
     }
     await window.app.showLive2D()

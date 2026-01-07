@@ -8,6 +8,7 @@ import type { Live2DModelAsset, Live2DModelConfig } from './types'
 const STORAGE_KEY = 'saki.live2d.models'
 
 // 内置模型配置
+// 注意：motions 和 expressions 数组为空，因为这些会在模型加载时从 model.json 动态解析
 const BUILTIN_MODELS: Live2DModelAsset[] = [
     {
         id: 'builtin-sakiko-casual',
@@ -174,6 +175,7 @@ export class Live2DModelManager {
 
     /**
      * 根据ID获取模型
+     * 注意：内置模型优先于用户模型，避免用户使用以 'builtin-' 开头的 ID
      */
     getModelById(id: string): Live2DModelAsset | undefined {
         return this.builtinModels.find((m) => m.id === id) || this.models.find((m) => m.id === id)
